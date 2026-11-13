@@ -212,7 +212,7 @@ function renderYoutube(data) {
   }).join("");
   $("ytBench").innerHTML = data.median_views_text
     ? `ค่ากลางยอดวิวของเพลงเหล่านี้บน YouTube ตอนนี้ <b>${esc(data.median_views_text)} วิว</b> · โมเดลคาด <b>${esc(state.result.prediction.views_text)} วิว</b>` +
-      ` <span class="tt-muted">(ดึงเมื่อ ${esc(data.fetched_at)}${data.cached ? ", ใช้ผลค้นหาที่เก็บไว้" : ""})</span>`
+      ` <span class="tt-muted">(ดึงเมื่อ ${esc(new Date(data.fetched_at).toLocaleTimeString("th-TH"))}${data.cached ? ", ใช้ผลค้นหาที่เก็บไว้" : ""})</span>`
     : "";
 }
 

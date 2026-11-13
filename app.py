@@ -11,6 +11,7 @@ import sys
 import threading
 import time
 from collections import defaultdict, deque
+from datetime import datetime, timezone
 
 from flask import Flask, jsonify, render_template, request, send_file
 
@@ -63,6 +64,11 @@ class RateLimiter:
 
 search_limiter = RateLimiter(env_int("YT_SEARCH_PER_IP", 20), 10 * 60)
 stats_limiter = RateLimiter(60, 10 * 60)
+
+
+def _now_iso() -> str:
+    """เวลาแบบ UTC มีโซนเวลากำกับ ให้เบราว์เซอร์แปลงเป็นเวลาท้องถิ่นของผู้ใช้เอง (เซิร์ฟเวอร์อยู่คนละโซน)"""
+    return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
 def get_model() -> LyricsModel:
@@ -196,7 +202,7 @@ def youtube_search():
         median_views=median,
         median_views_text=format_views(median) if median is not None else None,
         cached=cached,
-        fetched_at=time.strftime("%H:%M:%S"),
+        fetched_at=_now_iso(),
     )
 
 
@@ -216,7 +222,7 @@ def youtube_stats():
         v = infos.get(vid)
         if v and v["views"] is not None:
             stats[url] = {"views": v["views"], "views_text": format_views(v["views"]), "title": v["title"]}
-    return jsonify(stats=stats, fetched_at=time.strftime("%H:%M:%S"))
+    return jsonify(stats=stats, fetched_at=_now_iso())
 
 
 # ------------------------------------------------------------------ warm-up
