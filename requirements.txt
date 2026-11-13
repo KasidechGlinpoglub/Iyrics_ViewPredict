@@ -1,0 +1,13 @@
+# เวอร์ชันที่ทดสอบแล้วกับ Python 3.14
+flask==3.1.3
+pythainlp==5.4.0
+scikit-learn==1.9.1
+pandas==3.1.1
+numpy==2.5.3
+joblib==1.6.0
+openpyxl==3.1.5
+requests==2.34.2
+# เซิร์ฟเวอร์สำหรับ deploy (Linux) — บน Windows ใช้ python app.py แทน
+gunicorn==27.0.1
+# ไม่บังคับ: ใช้ดึงยอดวิวด้วย scripts/collect_youtube.py เมื่อยังไม่มี YOUTUBE_API_KEY
+# yt-dlp

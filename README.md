@@ -1,1 +1,123 @@
-# Iyrics_ViewPredict
+# ทำนายยอดวิว YouTube จากเนื้อเพลง (Naive Bayes + NLP)
+
+เว็บแอปที่ใส่เนื้อเพลงทางซ้าย แล้วทางขวาจะแสดง
+
+- **ยอดวิวที่คาดว่าจะได้** และความน่าจะเป็นของแต่ละระดับยอดวิว
+- **เพลงที่เนื้อหาใกล้เคียง** 2 แหล่ง
+  - **YouTube (สด)**: ค้นเพลงจริงบน YouTube จากคำเด่นในเนื้อเพลง พร้อมลิงก์และยอดวิว ณ ตอนนี้
+  - **ชุดข้อมูลเทรน**: เพลงในชุดข้อมูลที่เนื้อหาคล้ายที่สุด (ถ้ามีลิงก์ จะอัปเดตยอดวิวล่าสุดให้อัตโนมัติ)
+- **ตาราง Heatmap ของเนื้อเพลง** (รายคำ / รายบรรทัด) และปุ่ม **Export Excel / PNG**
+
+## วิธีรันในเครื่อง
+
+```bash
+pip install -r requirements.txt
+python scripts/make_demo_data.py   # สร้างข้อมูลจำลอง (ครั้งแรก)
+python train.py                    # เทรนโมเดล -> models/lyrics_nb.joblib
+python app.py                      # เปิด http://127.0.0.1:5000
+```
+
+ถ้ายังไม่ตั้งค่า YouTube API แอปยังใช้งานได้ครบ ยกเว้นแท็บ "YouTube (สด)"
+
+## เชื่อมต่อ YouTube Data API (ข้อมูล real-time)
+
+ใช้ **YouTube Data API v3** ซึ่งเป็น API ทางการของ Google (ฟรี 10,000 หน่วย/วัน)
+
+1. เข้า [Google Cloud Console](https://console.cloud.google.com/) แล้วสร้างโปรเจกต์ใหม่
+2. ไปที่ **APIs & Services → Library** ค้นหา **YouTube Data API v3** แล้วกด **Enable**
+3. ไปที่ **APIs & Services → Credentials → Create credentials → API key**
+4. (แนะนำ) กด **Edit API key → API restrictions → Restrict key** แล้วเลือกเฉพาะ YouTube Data API v3
+5. คัดลอกไฟล์ `.env.example` เป็น `.env` แล้วใส่ key:
+   ```
+   YOUTUBE_API_KEY=ใส่-key-ที่นี่
+   ```
+6. รัน `python app.py` ใหม่ ท้ายหน้าเว็บจะขึ้นว่า "YouTube API เชื่อมต่อแล้ว"
+
+> ห้ามอัปโหลดไฟล์ `.env` ขึ้น GitHub (มีใน `.gitignore` แล้ว) key จะถูกใช้ฝั่งเซิร์ฟเวอร์เท่านั้น ไม่ถูกส่งไปที่หน้าเว็บ
+
+**โควตา**: การค้นหา 1 ครั้งใช้ 100 หน่วย จึงค้นได้ประมาณ 100 ครั้ง/วัน แอปจึงมีการป้องกันดังนี้
+- จำกัดการค้นหาไว้ที่ `YT_DAILY_SEARCH_LIMIT` ครั้ง/วัน (ค่าเริ่มต้น 90)
+- จำกัดผู้ใช้แต่ละ IP ไว้ที่ `YT_SEARCH_PER_IP` ครั้ง/10 นาที (ค่าเริ่มต้น 20)
+- เก็บผลค้นหาไว้ 6 ชั่วโมง และเก็บยอดวิวไว้ 10 นาที (คำค้นเดิมจะไม่เสียโควตาซ้ำ)
+- ดึงยอดวิวใช้แค่ 1 หน่วยต่อ 50 วิดีโอ
+
+**ข้อจำกัด**: API ไม่ให้เนื้อเพลง (ซับไตเติลดาวน์โหลดได้เฉพาะวิดีโอของเจ้าของ และเนื้อเพลงมีลิขสิทธิ์)
+แอปจึงค้นจากคำเด่นในเนื้อเพลง แล้วเรียงผลตามความคล้ายระหว่างเนื้อเพลงกับ **ชื่อ + คำอธิบายวิดีโอ**
+(MV หลายเพลงใส่เนื้อเพลงไว้ในคำอธิบาย จึงมักเจอเพลงที่ตรงจริง) แก้คำค้นเองได้ในช่อง "คำค้น"
+
+## ใช้ข้อมูลจริงในการเทรน
+
+ตอนนี้แอปใช้ **ข้อมูลจำลอง** (`data/demo_songs.csv`: เนื้อเพลง ยอดวิว และศิลปินที่สร้างขึ้นเอง ไม่มีลิงก์จริง)
+
+1. ดึงรายชื่อเพลง + ยอดวิวจาก playlist บน YouTube (ต้องมี API key, ใช้โควตาแค่ 1 หน่วย/50 เพลง):
+   ```bash
+   python scripts/collect_youtube.py playlist "https://www.youtube.com/playlist?list=..." -o data/raw_songs.csv
+   ```
+   รันได้หลาย playlist ข้อมูลจะถูกรวมในไฟล์เดียว (ไม่ทับเนื้อเพลงที่กรอกไว้แล้ว)
+2. กรอกเนื้อเพลงในคอลัมน์ `lyrics` ของ `data/raw_songs.csv`
+3. อัปเดตยอดวิวล่าสุดและสร้างไฟล์สำหรับเทรน (แถวที่ยังไม่มีเนื้อเพลงจะถูกข้าม):
+   ```bash
+   python scripts/collect_youtube.py fill data/raw_songs.csv -o data/songs.csv
+   ```
+   ถ้าไม่มี API key คำสั่ง `fill` จะใช้ yt-dlp แทน (`pip install yt-dlp`)
+4. `python train.py` (ถ้ามี `data/songs.csv` จะใช้แทนข้อมูลจำลองอัตโนมัติ) แล้วรัน `python app.py` ใหม่
+
+ควรมีอย่างน้อยประมาณ 200 เพลงขึ้นไปเพื่อให้ผลน่าเชื่อถือ
+
+## Deploy ขึ้นอินเทอร์เน็ต (ให้คนอื่นเปิดได้)
+
+โปรเจกต์มี `Dockerfile` (เทรนโมเดลตอน build แล้วรันด้วย gunicorn) และ `render.yaml` พร้อมแล้ว
+
+**Render (แนะนำ, ฟรี)**
+1. อัปโหลดโฟลเดอร์นี้ขึ้น GitHub (ไฟล์ `.env` และ `models/` จะไม่ถูกอัปโหลด)
+2. ที่ [render.com](https://render.com) เลือก **New → Blueprint** แล้วเลือก repo นี้
+3. ใส่ค่า `YOUTUBE_API_KEY` ตอนที่ระบบถาม แล้วกด Deploy
+4. จะได้ลิงก์ `https://<ชื่อ>.onrender.com` (แผนฟรีจะหลับเมื่อไม่มีคนใช้ เปิดครั้งแรกรอประมาณ 1 นาที)
+
+**Hugging Face Spaces (ฟรี)**
+1. สร้าง Space ใหม่ เลือก SDK = **Docker**
+2. อัปโหลดไฟล์ทั้งหมดในโฟลเดอร์นี้ แล้วเพิ่มบรรทัดเหล่านี้ไว้บนสุดของ `README.md` ใน Space:
+   ```
+   ---
+   title: Lyrics View Predictor
+   sdk: docker
+   app_port: 7860
+   ---
+   ```
+3. ไปที่ **Settings → Variables and secrets** เพิ่ม secret ชื่อ `YOUTUBE_API_KEY`
+
+## หลักการทำงาน
+
+| ขั้นตอน | รายละเอียด |
+|---|---|
+| 1. Preprocessing | normalize ข้อความ → ลบสัญลักษณ์/URL → ตัดคำด้วย **PyThaiNLP (newmm)** → ตัด stopwords ไทย/อังกฤษและคำสร้อย |
+| 2. Label | Naive Bayes เป็นตัวจำแนกประเภท จึงแบ่งยอดวิวเป็น 4 ระดับ (ต่ำ / ปานกลาง / สูง / สูงมาก) ด้วย **quantile ของ log10(views)** ให้แต่ละระดับมีจำนวนเพลงเท่ากัน |
+| 3. Features | **TF-IDF** (sublinear tf) ของคำ |
+| 4. Model | **Multinomial Naive Bayes** หาค่า `alpha`, `use_idf`, `min_df` ด้วย GridSearchCV 5-fold (วัดด้วย macro-F1) |
+| 5. ยอดวิวที่คาด | `10 ^ Σ P(ระดับ \| เนื้อเพลง) × median(log10 views ของระดับนั้น)` |
+| 6. เพลงใกล้เคียง (ชุดข้อมูล) | cosine similarity ของเวกเตอร์ TF-IDF กับทุกเพลงในชุดข้อมูล |
+| 7. เพลงใกล้เคียง (YouTube สด) | คำเด่น 4 คำ (TF × IDF) → YouTube search (หมวด Music, ภูมิภาค TH) → เรียงใหม่ด้วย cosine similarity ระหว่างเนื้อเพลงกับชื่อ+คำอธิบายวิดีโอ |
+| 8. Heatmap รายคำ | `P(ระดับ \| คำ)` จาก `feature_log_prob_` ของ Naive Bayes (normalize ทีละคำ, prior เท่ากัน) |
+| 9. Heatmap รายบรรทัด | `predict_proba` ของแต่ละบรรทัดแยกกัน |
+
+ผลการประเมิน (test set 20%, แบ่งแบบ stratified) จะแสดงตอนรัน `train.py` บันทึกไว้ที่ `models/report.json` และแสดงที่ท้ายหน้าเว็บ
+ได้แก่ accuracy เทียบ baseline (ทายระดับที่พบมากที่สุด), macro-F1, MAE ใน log10 และ confusion matrix
+
+## โครงสร้างไฟล์
+
+```
+app.py                  Flask server + API
+                        /api/predict, /api/export/xlsx, /api/info, /api/example
+                        /api/youtube/search, /api/youtube/stats   (real-time)
+train.py                เทรนและประเมินโมเดล
+core/text.py            ตัดคำ / ทำความสะอาดข้อความ
+core/model.py           Naive Bayes, ยอดวิวที่คาด, เพลงใกล้เคียง, คำเด่น, heatmap
+core/youtube.py         YouTube Data API v3 client (cache, จำกัดโควตา, แปลง error เป็นภาษาไทย)
+core/config.py          อ่านค่าจาก .env
+core/export.py          สร้างไฟล์ Excel heatmap (3 ชีต)
+templates/index.html    หน้าเว็บ
+static/app.js, style.css
+scripts/make_demo_data.py   สร้างข้อมูลจำลอง
+scripts/collect_youtube.py  เก็บข้อมูลเทรนจาก YouTube (playlist / fill)
+Dockerfile, render.yaml     สำหรับ deploy
+```

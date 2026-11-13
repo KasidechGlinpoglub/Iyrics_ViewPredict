@@ -1,0 +1,14 @@
+# Render Blueprint: New > Blueprint > เลือก repo นี้ แล้วใส่ YOUTUBE_API_KEY ตอนสร้าง
+services:
+  - type: web
+    name: lyrics-view-predictor
+    runtime: docker
+    plan: free
+    healthCheckPath: /api/info
+    envVars:
+      - key: YOUTUBE_API_KEY
+        sync: false
+      - key: YT_DAILY_SEARCH_LIMIT
+        value: "90"
+      - key: YT_SEARCH_PER_IP
+        value: "20"

@@ -1,0 +1,9 @@
+# ความลับ: ห้ามอัปโหลด
+.env
+
+# สร้างใหม่ได้ด้วย python train.py
+models/
+
+__pycache__/
+*.pyc
+.claude/

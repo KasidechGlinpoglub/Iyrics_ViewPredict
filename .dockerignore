@@ -1,0 +1,7 @@
+.env
+.git
+.claude
+models/
+**/__pycache__/
+*.xlsx
+*.png

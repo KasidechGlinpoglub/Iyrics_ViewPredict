@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ทำนายยอดวิวจากเนื้อเพลง</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <h1>ทำนายยอดวิว YouTube จากเนื้อเพลง</h1>
+      <p class="tagline">Multinomial Naive Bayes · TF-IDF · ตัดคำภาษาไทยด้วย PyThaiNLP</p>
+    </div>
+    <span class="badge" id="demoBadge" hidden title="ใส่ data/songs.csv จริงแล้วรัน python train.py">ใช้ข้อมูลจำลอง</span>
+  </header>
+
+  <main class="flow">
+    <!-- ฝั่งซ้าย: ช่องใส่เนื้อเพลง -->
+    <section class="card input-card" aria-labelledby="lyricsTitle">
+      <div class="card-head">
+        <h2 id="lyricsTitle">เนื้อเพลง</h2>
+        <span class="counter" id="counter">0 บรรทัด · 0 ตัวอักษร</span>
+      </div>
+      <textarea id="lyrics" spellcheck="false" placeholder="วางเนื้อเพลงที่นี่ (หนึ่งบรรทัดต่อหนึ่งท่อน)"></textarea>
+      <div class="actions">
+        <button class="btn primary" id="btnPredict" type="button">ทำนายยอดวิว</button>
+        <button class="btn" id="btnExample" type="button">สุ่มเนื้อเพลงตัวอย่าง</button>
+        <button class="btn ghost" id="btnClear" type="button">ล้าง</button>
+      </div>
+      <p class="hint">กด <kbd>Ctrl</kbd> + <kbd>Enter</kbd> เพื่อทำนาย</p>
+      <p class="error" id="error" role="alert" hidden></p>
+    </section>
+
+    <div class="flow-arrow" aria-hidden="true">
+      <svg viewBox="0 0 48 24" width="48" height="24"><path d="M2 12h40m-9-8 9 8-9 8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </div>
+
+    <!-- ฝั่งขวา: ผลทำนาย + เพลงที่เนื้อหาใกล้เคียง -->
+    <section class="card result-card" aria-labelledby="resultTitle" aria-live="polite">
+      <div class="card-head">
+        <h2 id="resultTitle">ผลทำนายยอดวิว</h2>
+      </div>
+
+      <div class="empty" id="resultEmpty">
+        <p>ใส่เนื้อเพลงทางซ้าย แล้วกด <b>ทำนายยอดวิว</b></p>
+      </div>
+
+      <div id="resultBody" hidden>
+        <div class="hero">
+          <div class="hero-label">ยอดวิวที่คาดว่าจะได้</div>
+          <div class="hero-value"><span id="heroViews">–</span><span class="hero-unit">วิว</span></div>
+          <div class="hero-sub" id="heroSub"></div>
+        </div>
+
+        <div class="probs" id="probs" role="list" aria-label="ความน่าจะเป็นของแต่ละระดับยอดวิว"></div>
+        <p class="coverage" id="coverage"></p>
+
+        <div class="divider"></div>
+
+        <div class="similar-head">
+          <h3 class="section-title">เพลงที่เนื้อหาใกล้เคียง</h3>
+          <div class="tabs small" role="tablist" id="simTabs" aria-label="แหล่งข้อมูลเพลงที่ใกล้เคียง">
+            <button role="tab" aria-selected="true" data-src="youtube" type="button">YouTube <span class="live">สด</span></button>
+            <button role="tab" aria-selected="false" data-src="dataset" type="button">ชุดข้อมูลเทรน</button>
+          </div>
+        </div>
+
+        <div id="simYoutube" role="tabpanel">
+          <form class="yt-query" id="ytForm">
+            <label for="ytQuery">คำค้น</label>
+            <input id="ytQuery" type="search" maxlength="100" autocomplete="off" placeholder="คำเด่นจากเนื้อเพลง">
+            <button class="btn" type="submit" id="btnYtSearch">ค้นใหม่</button>
+          </form>
+          <p class="yt-status" id="ytStatus" role="status"></p>
+          <ol class="similar yt" id="ytResults"></ol>
+          <p class="yt-bench" id="ytBench"></p>
+        </div>
+
+        <div id="simDataset" role="tabpanel" hidden>
+          <ol class="similar" id="similar"></ol>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- Heatmap ของเนื้อเพลง + ปุ่ม export -->
+  <section class="card heatmap-card" id="heatmapCard" hidden aria-labelledby="heatmapTitle">
+    <div class="heatmap-head">
+      <div>
+        <h2 id="heatmapTitle">ตาราง Heatmap ของเนื้อเพลง</h2>
+        <p class="sub" id="heatmapSub"></p>
+      </div>
+      <div class="heatmap-tools">
+        <div class="tabs" role="tablist" id="viewTabs" aria-label="มุมมอง heatmap">
+          <button role="tab" aria-selected="true" data-view="words" type="button">รายคำ</button>
+          <button role="tab" aria-selected="false" data-view="lines" type="button">รายบรรทัด</button>
+        </div>
+        <div class="export">
+          <button class="btn primary" id="btnXlsx" type="button">Export Excel</button>
+          <button class="btn" id="btnPng" type="button">Export PNG</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="legend">
+      <span>0%</span><span class="legend-ramp" id="legendRamp"></span><span>100%</span>
+      <span class="legend-note">สีเข้มขึ้น = สัมพันธ์กับระดับยอดวิวนั้นมากขึ้น</span>
+    </div>
+
+    <div class="table-wrap">
+      <table class="heatmap" id="heatmapTable"></table>
+    </div>
+    <p class="unknown" id="unknownWords"></p>
+  </section>
+
+  <footer class="footer" id="modelInfo"></footer>
+
+  <div class="tooltip" id="tooltip" role="tooltip" hidden></div>
+
+  <script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+</html>
