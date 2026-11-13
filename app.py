@@ -17,13 +17,15 @@ from flask import Flask, jsonify, render_template, request, send_file
 
 from core.config import BASE_DIR, env_int  # โหลด .env ก่อนส่วนอื่น
 from core.export import build_workbook
-from core.model import LyricsModel, format_views, text_similarity
+from core.matching import find_on_youtube, pick_results, search_keywords
+from core.model import LyricsModel, format_views
 from core.text import tokenize
 from core.youtube import YouTubeClient, YouTubeError, extract_video_id
 
 MODEL_PATH = BASE_DIR / "models" / "lyrics_nb.joblib"
 MAX_CHARS = 20_000
 YT_RESULTS_SHOWN = 6
+YT_CANDIDATES = 25  # ดึงผลค้นหามาเยอะ (ราคาโควตาเท่าเดิม) แล้วค่อยคัดด้วยความตรงกับเนื้อเพลง
 
 app = Flask(__name__)
 app.json.ensure_ascii = False
@@ -163,22 +165,18 @@ def export_xlsx():
 # ------------------------------------------------------------------ YouTube (real-time)
 @app.post("/api/youtube/search")
 def youtube_search():
-    """ค้นเพลงจริงบน YouTube จากคำเด่นในเนื้อเพลง แล้วเรียงตามความคล้ายของเนื้อเพลงกับชื่อ+คำอธิบายวิดีโอ"""
+    """ค้นเพลงจริงบน YouTube จากคำที่หายากในเนื้อเพลง แล้วเรียงตามความตรงกับเนื้อเพลง (ดู core/matching.py)"""
     data = _json_body()
     lyrics = _lyrics_from(data, required=False)
     tokens = tokenize(lyrics) if lyrics else []
-    keywords = get_model().keywords(tokens) if tokens else []
-    query = " ".join(str(data.get("query", "") or "").split())[:100] or " ".join(keywords)
-    if not query:
+    keywords = search_keywords(tokens) if tokens else []
+    user_query = " ".join(str(data.get("query", "") or "").split())[:100]
+    if not (user_query or keywords):
         raise ValueError("ไม่มีคำค้น ใส่เนื้อเพลงหรือคำค้นก่อน")
 
     yt = _require_youtube(search_limiter)
-    ids, cached = yt.search(query)
-    infos = yt.videos(ids)
-    videos = [infos[i] for i in ids if i in infos]
-    sims = text_similarity(tokens, [f"{v['title']}\n{v['description']}" for v in videos])
-
-    ranked = sorted(zip(videos, sims), key=lambda vs: -round(vs[1], 3))[:YT_RESULTS_SHOWN]  # stable: เสมอกันคงลำดับของ YouTube
+    grouped, queries, cached = find_on_youtube(yt, lyrics, tokens, user_query, candidates=YT_CANDIDATES)
+    ranked = pick_results(grouped, YT_RESULTS_SHOWN)
     results = [
         {
             "title": v["title"],
@@ -189,14 +187,18 @@ def youtube_search():
             "views": v["views"],
             "views_text": format_views(v["views"]) if v["views"] is not None else "ซ่อนยอดวิว",
             "likes": v["likes"],
-            "lyric_similarity": round(s, 4),
+            "lyric_similarity": round(v["score"], 4),
+            "match_reason": v["reason"],
+            "signals": v["signals"],
+            "versions": v["versions"],
         }
-        for v, s in ranked
+        for v in ranked
     ]
     views = [r["views"] for r in results if r["views"] is not None]
     median = statistics.median(views) if views else None
     return jsonify(
-        query=query,
+        query=queries[0],
+        extra_queries=queries[1:],
         keywords=keywords,
         results=results,
         median_views=median,
@@ -230,6 +232,7 @@ def _warm_up() -> None:
     """โหลดโมเดลและพจนานุกรมตัดคำไว้ก่อน ให้คำขอแรกไม่ช้า (ทำงานทั้งตอนรัน python app.py และ gunicorn)"""
     if MODEL_PATH.exists():
         get_model().predict("ทดสอบระบบ รัก")
+    search_keywords(tokenize("ทดสอบระบบ คนเดียว"))  # โหลดคลังความถี่คำ TNC
 
 
 _warm_up()

@@ -11,7 +11,6 @@
 """
 from __future__ import annotations
 
-import math
 from collections import Counter
 from pathlib import Path
 
@@ -93,16 +92,6 @@ def _class_ranges(edges: list[float], n_classes: int) -> list[str]:
 
 def _class_centers(log_views: np.ndarray, y: np.ndarray, n_classes: int) -> list[float]:
     return [float(np.median(log_views[y == c])) for c in range(n_classes)]
-
-
-def text_similarity(query_tokens: list[str], texts: list[str]) -> list[float]:
-    """cosine similarity ระหว่างเนื้อเพลงกับข้อความอื่น (เช่น ชื่อ+คำอธิบายวิดีโอ YouTube)
-    ใช้ TF-IDF ที่ fit เฉพาะชุดนี้ จึงรองรับคำที่ไม่อยู่ในชุดข้อมูลเทรน"""
-    if not query_tokens or not texts:
-        return [0.0] * len(texts)
-    docs = [query_tokens] + [tokenize(t) for t in texts]
-    matrix = TfidfVectorizer(analyzer=identity, sublinear_tf=True).fit_transform(docs)
-    return [float(s) for s in linear_kernel(matrix[0], matrix[1:]).ravel()]
 
 
 # ---------------------------------------------------------------- training
@@ -246,16 +235,6 @@ class LyricsModel:
             "similar": self.similar(tokens, top_k),
             "heatmap": self.heatmap(lyrics, tokens),
         }
-
-    def keywords(self, tokens: list[str], k: int = 4) -> list[str]:
-        """คำเด่นของเนื้อเพลง (TF-IDF) ใช้เป็นคำค้นบน YouTube
-        คำที่ไม่อยู่ในชุดข้อมูลถือว่าหายาก (idf สูงสุด)"""
-        vec = self.b["sim_vectorizer"]
-        idf, vocab = vec.idf_, vec.vocabulary_
-        max_idf = float(idf.max())
-        counts = Counter(tokens)
-        score = {w: (1 + math.log(c)) * (float(idf[vocab[w]]) if w in vocab else max_idf) for w, c in counts.items()}
-        return sorted(counts, key=lambda w: -score[w])[:k]  # sort แบบ stable: เสมอกันให้คำที่มาก่อนชนะ
 
     def similar(self, tokens: list[str], top_k: int = 5) -> list[dict]:
         query = self.b["sim_vectorizer"].transform([tokens])

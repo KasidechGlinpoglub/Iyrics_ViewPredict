@@ -144,6 +144,8 @@ function renderResult(r) {
 }
 
 // ------------------------------------------------------------------ YouTube (real-time)
+const MATCH_REASON = { lyrics: "เนื้อเพลงตรงกัน", title: "ชื่อเพลงตรงกัน", words: "เนื้อหาคล้าย" };
+
 function setSource(src) {
   state.src = src;
   document.querySelectorAll("#simTabs button").forEach((b) => b.setAttribute("aria-selected", String(b.dataset.src === src)));
@@ -188,12 +190,17 @@ async function searchYoutube(query = "") {
 
 function renderYoutube(data) {
   $("ytQuery").value = data.query;
+  const extra = data.extra_queries?.length ? ` · ค้นเพิ่มด้วย "${data.extra_queries.join('", "')}"` : "";
   ytStatus(data.results.length
-    ? `ผลค้นหา ${data.results.length} เพลง เรียงตามความคล้ายของเนื้อเพลงกับชื่อ+คำอธิบายวิดีโอ`
+    ? `ผลค้นหา ${data.results.length} เพลง เรียงตามความตรงกับเนื้อเพลง รวมเวอร์ชันซ้ำแล้ว${extra}`
     : "ไม่พบวิดีโอ ลองแก้คำค้นแล้วกดค้นใหม่");
   $("ytResults").innerHTML = data.results.map((v) => {
     const year = v.published_at ? ` · ${new Date(v.published_at).getFullYear() + 543}` : "";
-    const score = v.lyric_similarity >= 0.01 ? `คล้ายเนื้อเพลง ${pct(v.lyric_similarity)}` : "พบจากคำค้น";
+    const versions = v.versions > 1 ? ` · รวม ${v.versions} เวอร์ชัน` : "";
+    const score = v.lyric_similarity >= 0.01 ? `${MATCH_REASON[v.match_reason] || "ตรงกัน"} ${pct(v.lyric_similarity)}` : "พบจากคำค้น";
+    const why = v.signals
+      ? `ท่อนเพลงตรงกัน ${pct(v.signals.lines)} · ชื่อเพลงตรง ${pct(v.signals.title)} · คำคล้าย ${pct(v.signals.words)}`
+      : "";
     const views = v.views === null ? "ซ่อนยอดวิว" : `${esc(v.views_text)} วิว`;
     return `<li>
       <a class="yt-thumb" href="${esc(v.url)}" target="_blank" rel="noopener noreferrer" tabindex="-1" aria-hidden="true">
@@ -201,12 +208,12 @@ function renderYoutube(data) {
       </a>
       <div>
         <a class="sim-title" href="${esc(v.url)}" target="_blank" rel="noopener noreferrer">${esc(v.title)}</a>
-        <div class="sim-meta">${esc(v.channel)}${year}</div>
+        <div class="sim-meta">${esc(v.channel)}${year}${versions}</div>
         <div class="sim-link">link: <a href="${esc(v.url)}" target="_blank" rel="noopener noreferrer">${esc(v.url)}</a></div>
       </div>
       <div class="sim-side">
         <div class="sim-views" title="${v.views === null ? "" : fmtInt(v.views) + " ครั้ง"}"><span class="live-dot" aria-hidden="true"></span>${views}</div>
-        <div class="sim-score">${score}</div>
+        <div class="sim-score" title="${esc(why)}">${score}</div>
       </div>
     </li>`;
   }).join("");
@@ -509,7 +516,9 @@ document.querySelectorAll("#viewTabs button").forEach((b) => b.addEventListener(
 document.querySelectorAll("#simTabs button").forEach((b) => b.addEventListener("click", () => setSource(b.dataset.src)));
 $("ytForm").addEventListener("submit", (e) => {
   e.preventDefault();
-  searchYoutube($("ytQuery").value.trim());
+  const q = $("ytQuery").value.trim();
+  // ไม่ได้แก้คำค้น -> ให้เซิร์ฟเวอร์เลือกคำเอง (ค้นได้ 2 รอบ) แทนการค้นด้วยคำเดิมรอบเดียว
+  searchYoutube(q === state.youtube?.query ? "" : q);
 });
 $("btnXlsx").addEventListener("click", exportXlsx);
 $("btnPng").addEventListener("click", exportPng);
