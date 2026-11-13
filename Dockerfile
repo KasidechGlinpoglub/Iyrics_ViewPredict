@@ -14,6 +14,8 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY --chown=user . .
+# WORKDIR ถูกสร้างโดย root: ต้องให้ user เขียนได้ ไม่งั้น train.py สร้างโฟลเดอร์ models/ ไม่ได้
+RUN chown user:user /app
 USER user
 
 # เทรนโมเดลตอน build: ใช้ data/songs.csv ถ้ามี ไม่งั้นใช้ข้อมูลจำลอง
