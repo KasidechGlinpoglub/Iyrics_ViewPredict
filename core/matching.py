@@ -205,8 +205,16 @@ def find_on_youtube(yt, lyrics: str, tokens: list[str], user_query: str = "", ca
 def pick_results(grouped: list[dict], limit: int, min_score: float = 0.1, min_shown: int = 3,
                  min_views: int = 1_000) -> list[dict]:
     """ตัดผลที่แทบไม่เกี่ยวกับเนื้อเพลงทิ้ง แต่ให้เหลืออย่างน้อย min_shown รายการเป็นตัวเลือก
-    เพลงอื่น (ไม่ใช่เพลงที่ผู้ใช้ใส่) ต้องมีคนดูอย่างน้อย min_views ครั้ง กันคลิปโฆษณา/คลิปส่วนตัวที่หลุดมาในหมวด Music"""
-    pool = [v for v in grouped if v.get("is_input_song") or v["views"] is None or v["views"] >= min_views]
+    เพลงอื่น (ไม่ใช่เพลงที่ผู้ใช้ใส่) ต้อง (1) YouTube ไม่ได้จัดว่าเป็นหัวข้ออื่นที่ไม่ใช่เพลง (เช่น Health)
+    และ (2) มีคนดูอย่างน้อย min_views ครั้ง — กันคลิปความรู้/โฆษณา/คลิปส่วนตัวที่ผู้อัปโหลดตั้งหมวดเป็น Music"""
+    def is_candidate(v: dict) -> bool:
+        if v.get("is_input_song"):
+            return True
+        if v.get("is_music") is False:
+            return False
+        return v["views"] is None or v["views"] >= min_views
+
+    pool = [v for v in grouped if is_candidate(v)]
     strong = [v for v in pool if v["score"] >= min_score]
     return (strong if len(strong) >= min_shown else pool[:min_shown])[:limit]
 

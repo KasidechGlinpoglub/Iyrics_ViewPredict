@@ -21,6 +21,7 @@ _VIDEO_ID = re.compile(r"^[A-Za-z0-9_-]{11}$")
 _VIDEO_IN_URL = re.compile(r"(?:[?&]v=|youtu\.be/|/shorts/|/embed/|/live/)([A-Za-z0-9_-]{11})")
 _PLAYLIST_IN_URL = re.compile(r"[?&]list=([A-Za-z0-9_-]+)")
 _PACIFIC = timezone(timedelta(hours=-8))  # ประมาณเวลารีเซ็ตโควตา (ไม่คิด DST)
+_MUSIC_TOPICS = frozenset({"Jazz", "Reggae", "Rhythm_and_blues"})  # หัวข้อเพลงที่ชื่อไม่มีคำว่า music
 
 
 class YouTubeError(Exception):
@@ -167,7 +168,8 @@ class YouTubeClient:
                 out[vid] = hit
         for start in range(0, len(missing), 50):
             chunk = missing[start:start + 50]
-            data = self._get("videos", {"part": "snippet,statistics", "id": ",".join(chunk), "maxResults": 50})
+            # topicDetails ไม่เพิ่มค่าโควตา (videos.list = 1 หน่วยต่อครั้งไม่ว่าขอกี่ part)
+            data = self._get("videos", {"part": "snippet,statistics,topicDetails", "id": ",".join(chunk), "maxResults": 50})
             for item in data.get("items", []):
                 info = _video_info(item)
                 self._video_cache.set(info["video_id"], info)
@@ -201,9 +203,15 @@ def _video_info(item: dict) -> dict:
         except (TypeError, ValueError):
             return None
 
+    # หมวด (categoryId) ผู้อัปโหลดเลือกเอง คลิปข่าว/สุขภาพก็ตั้งเป็น Music ได้
+    # ส่วน topicCategories YouTube วิเคราะห์เอง: เพลงจะได้ Music / Pop_music ฯลฯ, คลิปสุขภาพได้ Health
+    topics = [t.rsplit("/", 1)[-1] for t in (item.get("topicDetails", {}) or {}).get("topicCategories", [])]
+    is_music = any("music" in t.lower() or t in _MUSIC_TOPICS for t in topics) if topics else None
     return {
         "video_id": item["id"],
         "url": watch_url(item["id"]),
+        "topics": topics,
+        "is_music": is_music,
         "title": sn.get("title", ""),
         "channel": sn.get("channelTitle", ""),
         "description": sn.get("description", ""),
