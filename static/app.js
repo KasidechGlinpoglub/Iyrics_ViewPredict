@@ -144,7 +144,7 @@ function renderResult(r) {
 }
 
 // ------------------------------------------------------------------ YouTube (real-time)
-const MATCH_REASON = { lyrics: "เนื้อเพลงตรงกัน", title: "ชื่อมีคำในเนื้อเพลง", words: "เนื้อหาคล้าย" };
+const MATCH_REASON = { lyrics: "เนื้อเพลงตรงกัน", title: "ชื่อมีคำในเนื้อเพลง", hook: "YouTube จับคู่ท่อนเพลง", words: "เนื้อหาคล้าย" };
 
 function setSource(src) {
   state.src = src;

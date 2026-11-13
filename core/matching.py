@@ -29,6 +29,8 @@ MIN_LINE_CHARS = 10          # ท่อนสั้นกว่านี้ไ�
 LINE_CHUNK = 10              # เทียบท่อนเพลงทีละช่วง 10 ตัวอักษร: สะกดต่างกันเล็กน้อยก็ยังนับว่าเจอ
 LINE_HIT_RATIO = 0.6         # ท่อนเพลงถือว่า "พบ" เมื่อช่วงตัวอักษรตรงกัน 60% ขึ้นไป
 THEME_FREQ = (500, 5_000)    # คำหายากปานกลาง: เจาะจงพอบอกธีมเพลง แต่ทั่วไปพอที่เพลงอื่นจะใช้ด้วย
+HOOK_RANK_TOP = 3            # ค้นด้วยท่อนเพลงตรง ๆ: 3 อันดับแรกของ YouTube ได้คะแนนเพิ่ม
+HOOK_RANK_WEIGHT = 0.35      # อันดับ 1 ได้ +0.35, อันดับ 2 +0.23, อันดับ 3 +0.12
 GROUP_RARITY = 15.0         # ชื่อวิดีโอมีคำจากท่อนฮุกที่หายากรวมถึงระดับนี้ = เป็นเพลงเดียวกัน (คนละเวอร์ชัน)
 # คำที่มักอยู่ในชื่อวิดีโอแต่ไม่ใช่ชื่อเพลง ไม่นำมาคิดสัดส่วนความตรงของชื่อ
 TITLE_NOISE = frozenset(
@@ -110,7 +112,27 @@ def word_freq(word: str) -> int:
     """ความถี่ของคำ (สเกลเดียวกับ TNC) — คำที่ทั่วไปในเพลงถือว่าทั่วไป แม้ในภาษาไทยมาตรฐานจะหายาก
     (คำอีสาน "บ่ อ้าย ฮัก" พบน้อยใน TNC แต่อยู่ในเพลงลูกทุ่ง/หมอลำแทบทุกเพลง ใช้แยกเพลงไม่ได้)"""
     base = _base_freq(word)
-    return max(base, 2 * COMMON_FREQ) if word in _lyric_common() else base
+    return max(base, 2 * COMMON_FREQ) if _is_lyric_common(word) else base
+
+
+def _is_lyric_common(word: str) -> bool:
+    """คำทั่วไปในเพลง หรือคำประสมจากคำทั่วไปในเพลงล้วน ๆ (เช่น "อีหยัง" = "อี" + "หยัง", "บ่ได้")"""
+    common = _lyric_common()
+    if word in common:
+        return True
+    if word.isascii() or len(word) < 3:
+        return False
+    from pythainlp.tokenize import word_tokenize
+
+    from .text import TH_STOPWORDS
+
+    parts = [p for p in word_tokenize(word, custom_dict=_tnc_dict(), engine="newmm", keep_whitespace=False) if p.strip()]
+    if len(parts) <= 1:  # พจนานุกรมเก็บเป็นคำเดียว ("ฉันนั้น") -> แยกเป็นพยางค์แทน
+        from pythainlp.tokenize import syllable_tokenize
+
+        parts = [p for p in syllable_tokenize(word, engine="dict") if p.strip()]
+    # ทุกส่วนเป็นคำทั่วไป (ในเพลง / stopword / พบบ่อยมากในภาษาทั่วไป) เช่น "ฉันนั้น", "เหมือนว่า"
+    return len(parts) > 1 and all(p in common or p in TH_STOPWORDS or _base_freq(p) > COMMON_FREQ for p in parts)
 
 
 def _base_freq(word: str) -> int:
@@ -185,7 +207,8 @@ def _title_support(title: str, hook_words: set[str]) -> tuple[float, frozenset[s
         words = {w for w in tokenize(segment) if w not in TITLE_NOISE}
         if not words:
             continue
-        hits = frozenset(w for w in words if w in hook_words)
+        # นับเฉพาะคำเจาะจง: คำทั่วไปในเพลง (รัก ใจ สัญญา) อยู่ในเนื้อเพลงแทบทุกเพลง ใช้บอกว่าเป็นเพลงเดียวกันไม่ได้
+        hits = frozenset(w for w in words if w in hook_words and word_freq(w) <= COMMON_FREQ)
         matched = sum(rarity(w) for w in hits)
         coverage = matched / sum(rarity(w) for w in words)
         # หลักคือ "มีคำฮุกที่เจาะจงอยู่ในชื่อ" ส่วนคำเกิน (ชื่อศิลปิน/ช่อง) หักคะแนนได้ไม่เกินครึ่ง
@@ -211,14 +234,23 @@ def score_videos(lyrics: str, tokens: list[str], videos: list[dict]) -> list[dic
         text = f"{v['title']}\n{v.get('description', '')}"
         text_norm = normalize(text)
         s_lines = sum(_line_found(ln, ch, text_norm) for ln, ch in lines) / len(lines) if lines else 0.0
-        s_title, title_words = _title_support(v["title"], hook_words) if hook_words else (0.0, frozenset())
+        # คำในชื่อคลิปที่เป็นชื่อช่องด้วย = ชื่อศิลปิน ไม่ใช่ชื่อเพลง (กันรวมทุกเพลงของศิลปินคนเดียวกัน)
+        artist_words = set(tokenize(v.get("channel", "")))
+        song_hooks = hook_words - artist_words
+        s_title, title_words = _title_support(v["title"], song_hooks) if song_hooks else (0.0, frozenset())
         s_words = _cosine(lyric_weights, _weights(tokenize(text))) if tokens else 0.0
-        blend = 0.6 * s_title + 0.4 * s_words
-        score = max(s_lines, blend)
+        # อันดับที่ YouTube ให้เมื่อค้นด้วยท่อนเพลงตรง ๆ (YouTube ค้นจากข้อความในคลิปได้มากกว่าที่ API ให้เราเห็น)
+        # ช่วย MV ที่คำอธิบายไม่มีเนื้อเพลงและชื่อเพลงไม่อยู่ในเนื้อร้อง
+        hook_bonus = HOOK_RANK_WEIGHT * max(0.0, 1 - v["hook_rank"] / HOOK_RANK_TOP) if "hook_rank" in v else 0.0
+        text_blend = 0.6 * s_title + 0.4 * s_words
+        blend = text_blend + hook_bonus
+        score = min(1.0, max(s_lines, blend))
         if s_lines >= 0.3 and s_lines >= blend:
             reason = "lyrics"
         elif s_title >= 0.5:
             reason = "title"
+        elif hook_bonus > text_blend:
+            reason = "hook"
         else:
             reason = "words"
         key_words = sorted(w for w in title_words if word_freq(w) <= COMMON_FREQ)  # ไม่ใช้คำทั่วไปอย่าง "พี่"
@@ -290,7 +322,8 @@ def find_on_youtube(yt, lyrics: str, tokens: list[str], user_query: str = "", ca
     if user_query or not tokens:
         return grouped, queries, all_cached
 
-    if not any(g.get("is_input_song") for g in grouped):
+    is_hook = not any(g.get("is_input_song") for g in grouped)
+    if is_hook:
         second = hook_line(lyrics)
     elif len(grouped) < min_songs:
         top = grouped[0]
@@ -309,23 +342,32 @@ def find_on_youtube(yt, lyrics: str, tokens: list[str], user_query: str = "", ca
     seen = {v["video_id"] for v in videos}
     infos2 = yt.videos([i for i in ids2 if i not in seen])
     videos += [infos2[i] for i in ids2 if i in infos2]
+    if is_hook:  # จำอันดับในผลค้นด้วยท่อนเพลง (สร้าง dict ใหม่ ไม่แก้ข้อมูลใน cache)
+        rank = {vid: i for i, vid in enumerate(ids2)}
+        videos = [{**v, "hook_rank": rank[v["video_id"]]} if v["video_id"] in rank else v for v in videos]
     grouped = group_versions(score_videos(lyrics, tokens, videos))
     queries.append(second)
     return grouped, queries, all_cached and cached2
 
 
 def hook_line(lyrics: str, max_chars: int = 60) -> str:
-    """ท่อนฮุก = บรรทัดที่ร้องซ้ำมากที่สุด (ยาวพอ) ถ้าไม่มีบรรทัดซ้ำ ใช้บรรทัดที่มีคำหายากมากที่สุด"""
+    """ท่อนฮุก = บรรทัดที่ร้องซ้ำ (ถ้ามี) และมีคำเจาะจงมากที่สุด
+    ไม่เลือกแค่บรรทัดที่ซ้ำบ่อยที่สุด เพราะมักเป็นท่อนเชียร์/คำสร้อย ("ละฟ้อน ละฟ้อน ฟ้อน ฟ้อน")"""
     lines = [ln for ln in split_lines(lyrics) if len(normalize(ln)) >= MIN_LINE_CHARS]
     if not lines:
         return ""
     counts = Counter(normalize(ln) for ln in lines)
+    repeated = [ln for ln in lines if counts[normalize(ln)] >= 2]
+    pool = repeated or lines
+    # น้ำหนักคำทั้งเพลง (ซ้ำบ่อย × หายาก): ท่อนที่เป็นชื่อเพลงมักใช้คำที่วนซ้ำทั้งเพลง
+    # ส่วนท่อนเล่าเรื่องยาว ๆ มีคำแปลกที่โผล่ครั้งเดียว ได้คะแนนน้อยกว่า
+    song_weights = _weights(tokenize(lyrics))
 
     def strength(line: str) -> tuple:
-        words = tokenize(line)
-        return counts[normalize(line)], sum(rarity(w) for w in set(words)), len(words)
+        words = set(tokenize(line))  # นับคำไม่ซ้ำ: ท่อนเชียร์ที่วนคำเดิมได้คะแนนน้อย
+        return sum(song_weights.get(w, 0.0) for w in words), counts[normalize(line)]
 
-    best = max(lines, key=strength)
+    best = max(pool, key=strength)
     if len(best) <= max_chars:
         return best
     cut = best[:max_chars]

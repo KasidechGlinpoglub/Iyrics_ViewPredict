@@ -68,6 +68,15 @@ _CREDIT = re.compile(
     re.IGNORECASE,
 )
 _JUNK_LINE = re.compile(r"https?://|www\.|^#|@\w|©|℗", re.IGNORECASE)
+# เครดิตที่ไม่มีเครื่องหมาย ":" เช่น "Edited by …", "ผู้กำกับ …", "Rapper X Feat. Y"
+_CREDIT_FREE = re.compile(
+    r"\b(?:edited|mixed|mastered|recorded|directed|produced|written|composed|arranged|performed|shot|filmed|"
+    r"music|lyrics|video|cover(?:ed)?|sung)\s+by\b|"
+    r"^\s*(?:ผู้กำกับ|กำกับ|ตัดต่อ|ถ่ายภาพ|ผู้แต่ง|แต่งเพลง|ผู้ประพันธ์|ประพันธ์|เรียบเรียง|โปรดิวเซอร์|มิกซ์|"
+    r"มาสเตอร์|บันทึกเสียง|director|editor|colorist|dop)\b",
+    re.IGNORECASE,
+)
+_FEAT = re.compile(r"\b(?:feat|ft)\.?\s", re.IGNORECASE)
 # บรรทัดหัวเพลงแบบ "ชื่อเพลง - ศิลปิน" / "Artist - Title (Lyrics)": ข้อความสั้นสองฝั่งคั่นด้วย - – | (มีช่องว่างรอบ)
 _HEADER_LINE = re.compile(r"^[^-–—|]{1,45}\s[-–—|]\s[^-–—|]{1,60}$")
 
@@ -81,6 +90,8 @@ def clean_lyrics(text: str) -> str:
         if not line or _LABEL_LINE.match(line) or _CREDIT.match(line) or _JUNK_LINE.search(line):
             continue
         if _HEADER_LINE.match(line) and len(line.split()) <= 10:  # หัวเพลง ไม่ใช่เนื้อร้อง
+            continue
+        if _CREDIT_FREE.search(line) or (_FEAT.search(line) and len(line.split()) <= 8):  # เครดิต/รายชื่อศิลปิน
             continue
         line = _REPEAT_MARK.sub(" ", _LABEL_PREFIX.sub("", line)).strip(" *-–—")
         if line:
