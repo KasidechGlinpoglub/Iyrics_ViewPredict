@@ -2,7 +2,8 @@
 
 ใช้งาน:
     python train.py                       # ใช้ data/songs.csv (ถ้าไม่มีจะใช้ data/demo_songs.csv)
-    python train.py --data my.csv --classes 3
+    python train.py --data my.csv
+    python train.py --levels quantile --classes 4   # แบ่งระดับตาม quantile แทนหลักหมื่น/แสน/ล้าน
 """
 from __future__ import annotations
 
@@ -23,7 +24,9 @@ def main() -> None:
     sys.stdout.reconfigure(encoding="utf-8")
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--data", type=Path, help="ไฟล์ CSV: title, artist, lyrics, views, url")
-    ap.add_argument("--classes", type=int, default=4, help="จำนวนระดับยอดวิว (2-5) ค่าเริ่มต้น 4")
+    ap.add_argument("--levels", choices=["fixed", "quantile"], default="fixed",
+                    help="fixed = หลักหมื่น/หลักแสน/หลักล้าน (ค่าเริ่มต้น), quantile = แบ่งให้แต่ละระดับมีจำนวนเพลงเท่ากัน")
+    ap.add_argument("--classes", type=int, default=4, help="จำนวนระดับเมื่อใช้ --levels quantile (2-5)")
     ap.add_argument("--out", type=Path, default=MODEL_PATH)
     args = ap.parse_args()
 
@@ -35,7 +38,7 @@ def main() -> None:
     df = load_dataset(data_path)
     print(f"ข้อมูล: {data_path.name} — {len(df)} เพลง{' (ข้อมูลจำลอง)' if is_demo else ''}")
     print("กำลังตัดคำและเทรนโมเดล (GridSearchCV 5-fold)...")
-    bundle = train(df, n_classes=args.classes, is_demo=is_demo)
+    bundle = train(df, levels=args.levels, n_classes=args.classes, is_demo=is_demo)
     model = LyricsModel(bundle)
     model.save(args.out)
 
@@ -45,7 +48,7 @@ def main() -> None:
         encoding="utf-8",
     )
 
-    print("\nระดับยอดวิว (แบ่งด้วย quantile):")
+    print("\nระดับยอดวิว" + (" (หลักหมื่น/แสน/ล้าน):" if args.levels == "fixed" else " (แบ่งด้วย quantile):"))
     for c in model.classes:
         print(f"  {c['name']:<8} {c['range']:<24} {c['count']} เพลง")
     print(f"\nพารามิเตอร์ที่ดีที่สุด : {rep['best_params']}")

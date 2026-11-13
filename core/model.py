@@ -1,8 +1,8 @@
 """โมเดลทำนายยอดวิวจากเนื้อเพลงด้วย Multinomial Naive Bayes
 
 แนวคิด
-- Naive Bayes เป็นตัวจำแนกประเภท จึงแบ่งยอดวิวเป็น "ระดับ" (class) ด้วย quantile ของ log10(views)
-  ทำให้แต่ละระดับมีจำนวนเพลงใกล้เคียงกัน
+- Naive Bayes เป็นตัวจำแนกประเภท จึงแบ่งยอดวิวเป็น "ระดับ" (class): ค่าเริ่มต้นเป็นระดับคงที่
+  หลักหมื่น (< 1 แสน) / หลักแสน (1 แสน – 1 ล้าน) / หลักล้าน (≥ 1 ล้าน) หรือแบ่งตาม quantile ของ log10(views)
 - Feature = TF-IDF ของคำที่ตัดด้วย PyThaiNLP
 - ยอดวิวที่คาด = 10 ^ ( Σ P(ระดับ|เนื้อเพลง) × ค่ากลาง log10(views) ของระดับนั้น )
 - เพลงที่เนื้อหาใกล้เคียง = cosine similarity ของ TF-IDF
@@ -33,6 +33,9 @@ CLASS_NAMES = {
     5: ["ต่ำมาก", "ต่ำ", "ปานกลาง", "สูง", "สูงมาก"],
 }
 MAX_LINES = 300
+# ระดับยอดวิวแบบคงที่ (log10): < 1 แสน, 1 แสน – 1 ล้าน, ≥ 1 ล้าน
+FIXED_EDGES = [5.0, 6.0]
+FIXED_NAMES = ["หลักหมื่น", "หลักแสน", "หลักล้าน"]
 
 
 # ---------------------------------------------------------------- utilities
@@ -95,16 +98,28 @@ def _class_centers(log_views: np.ndarray, y: np.ndarray, n_classes: int) -> list
 
 
 # ---------------------------------------------------------------- training
-def train(df: pd.DataFrame, n_classes: int = 4, seed: int = 42, is_demo: bool = False) -> dict:
-    if n_classes not in CLASS_NAMES:
-        raise ValueError(f"รองรับจำนวนระดับ {sorted(CLASS_NAMES)} เท่านั้น")
+def train(df: pd.DataFrame, levels: str = "fixed", n_classes: int = 4, seed: int = 42, is_demo: bool = False) -> dict:
+    """levels="fixed": ระดับคงที่ หลักหมื่น / หลักแสน / หลักล้าน (เข้าใจง่าย เทียบกับยอดวิวจริงได้ตรง ๆ)
+    levels="quantile": แบ่งตาม quantile ของข้อมูล ให้แต่ละระดับมีจำนวนเพลงเท่ากัน (n_classes ระดับ)"""
+    log_views = np.log10(df["views"].to_numpy(dtype=float))
+    if levels == "fixed":
+        edges = np.array(FIXED_EDGES)
+        names = FIXED_NAMES
+    else:
+        if n_classes not in CLASS_NAMES:
+            raise ValueError(f"รองรับจำนวนระดับ {sorted(CLASS_NAMES)} เท่านั้น")
+        edges = np.quantile(log_views, [i / n_classes for i in range(1, n_classes)])
+        names = CLASS_NAMES[n_classes]
+    n_classes = len(names)
+    y = np.digitize(log_views, edges)
+    counts = np.bincount(y, minlength=n_classes)
     if len(df) < n_classes * 10:
         raise ValueError(f"ข้อมูลน้อยเกินไป ({len(df)} เพลง) ควรมีอย่างน้อย {n_classes * 10} เพลง")
+    if counts.min() < 8:
+        detail = ", ".join(f"{n} {c} เพลง" for n, c in zip(names, counts))
+        raise ValueError(f"บางระดับมีเพลงน้อยเกินไป ({detail}) — เพิ่มข้อมูล หรือใช้ --levels quantile")
 
     tokens = [tokenize(t) for t in df["lyrics"]]
-    log_views = np.log10(df["views"].to_numpy(dtype=float))
-    edges = np.quantile(log_views, [i / n_classes for i in range(1, n_classes)])
-    y = np.digitize(log_views, edges)
 
     idx = np.arange(len(df))
     tr, te = train_test_split(idx, test_size=0.2, stratify=y, random_state=seed)
@@ -162,8 +177,9 @@ def train(df: pd.DataFrame, n_classes: int = 4, seed: int = 42, is_demo: bool = 
         "songs": songs.to_dict("records"),
         "edges": edges.tolist(),
         "centers": _class_centers(log_views, y, n_classes),
-        "class_names": CLASS_NAMES[n_classes],
+        "class_names": names,
         "class_ranges": _class_ranges(edges.tolist(), n_classes),
+        "levels": levels,
         "class_counts": np.bincount(y, minlength=n_classes).tolist(),
         "report": report,
         "is_demo": is_demo,

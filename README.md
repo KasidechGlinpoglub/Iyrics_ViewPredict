@@ -93,7 +93,7 @@ python app.py                      # เปิด http://127.0.0.1:5000
 | ขั้นตอน | รายละเอียด |
 |---|---|
 | 1. Preprocessing | normalize ข้อความ → ลบสัญลักษณ์/URL → ตัดคำด้วย **PyThaiNLP (newmm)** → ตัด stopwords ไทย/อังกฤษและคำสร้อย |
-| 2. Label | Naive Bayes เป็นตัวจำแนกประเภท จึงแบ่งยอดวิวเป็น 4 ระดับ (ต่ำ / ปานกลาง / สูง / สูงมาก) ด้วย **quantile ของ log10(views)** ให้แต่ละระดับมีจำนวนเพลงเท่ากัน |
+| 2. Label | Naive Bayes เป็นตัวจำแนกประเภท จึงแบ่งยอดวิวเป็น 3 ระดับคงที่: **หลักหมื่น** (< 1 แสน), **หลักแสน** (1 แสน – 1 ล้าน), **หลักล้าน** (≥ 1 ล้าน) — หรือใช้ `python train.py --levels quantile --classes 4` เพื่อแบ่งตาม quantile ให้แต่ละระดับมีจำนวนเพลงเท่ากัน |
 | 3. Features | **TF-IDF** (sublinear tf) ของคำ |
 | 4. Model | **Multinomial Naive Bayes** หาค่า `alpha`, `use_idf`, `min_df` ด้วย GridSearchCV 5-fold (วัดด้วย macro-F1) |
 | 5. ยอดวิวที่คาด | `10 ^ Σ P(ระดับ \| เนื้อเพลง) × median(log10 views ของระดับนั้น)` |
