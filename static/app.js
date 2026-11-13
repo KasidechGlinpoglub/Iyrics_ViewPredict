@@ -1,28 +1,24 @@
 "use strict";
 
-// sequential ramp (ฟ้าอ่อน -> น้ำเงินเข้ม) — ชุดเดียวกับไฟล์ Excel
+// sequential ramp ม่วงเข้ม -> ชมพู -> ส้ม -> เหลืองทอง (ความสว่างเพิ่มขึ้นทีละขั้น แบบ inferno)
+// ค่าน้อยกลืนกับพื้นม่วงเข้ม ค่ามากสว่างเป็นทอง
 const RAMP = [
-  "#cde2fb", "#b7d3f6", "#9ec5f4", "#86b6ef", "#6da7ec", "#5598e7", "#3987e5",
-  "#2a78d6", "#256abf", "#1c5cab", "#184f95", "#104281", "#0d366b",
+  "#2b1257", "#420a68", "#5c126e", "#781c6d", "#932667", "#bc3754",
+  "#dd513a", "#f37819", "#fca50a", "#f6d746", "#fcffa4",
 ];
-const WHITE_TEXT_FROM = 7;
+const DARK_TEXT_FROM = 7; // ช่องสีส้ม-เหลืองใช้ตัวอักษรสีเข้ม
 const FONT = '"IBM Plex Sans Thai", "Leelawadee UI", Tahoma, sans-serif';
+const DISPLAY = '"Kanit", "IBM Plex Sans Thai", "Leelawadee UI", Tahoma, sans-serif';
+const THEME = { bg: "#140a2e", panel: "#1b0c3f", ink: "#f7f1ff", ink2: "#cdbdf3", muted: "#9483c4", gold: "#f5c542", yellow: "#ffe680", line: "#3a2470", nullCell: "#251447" };
 
 const $ = (id) => document.getElementById(id);
 const state = { result: null, lyrics: "", view: "words", info: null, youtube: null, src: "youtube" };
 const ytEnabled = () => Boolean(state.info?.youtube?.enabled);
-const darkQuery = window.matchMedia("(prefers-color-scheme: dark)");
 
-const isDark = () => {
-  const t = document.documentElement.dataset.theme;
-  return t ? t === "dark" : darkQuery.matches;
-};
-
-/** สีของช่อง heatmap: โหมดมืดกลับด้าน ramp เพื่อให้ค่าน้อยกลืนกับพื้นหลังเข้ม */
-function cellColor(v, dark = isDark()) {
-  const step = Math.round(v * (RAMP.length - 1));
-  const i = dark ? RAMP.length - 1 - step : step;
-  return { bg: RAMP[i], fg: i >= WHITE_TEXT_FROM ? "#ffffff" : "#0b0b0b" };
+/** สีของช่อง heatmap ตามค่า 0–1 */
+function cellColor(v) {
+  const i = Math.round(Math.min(1, Math.max(0, v)) * (RAMP.length - 1));
+  return { bg: RAMP[i], fg: i >= DARK_TEXT_FROM ? "#2a1059" : "#ffffff" };
 }
 
 const pct = (v) => `${(v * 100).toFixed(1)}%`;
@@ -357,7 +353,7 @@ function fitText(ctx, text, maxWidth) {
   return t + "…";
 }
 
-/** วาดตาราง heatmap (มุมมองปัจจุบัน) ลง canvas แล้วบันทึกเป็น PNG — ใช้สีโหมดสว่างเสมอ */
+/** วาดตาราง heatmap (มุมมองปัจจุบัน) ลง canvas แล้วบันทึกเป็น PNG — ธีมเดียวกับหน้าเว็บ (ม่วง × ทอง) */
 async function exportPng() {
   const r = state.result;
   if (!r) return;
@@ -387,38 +383,57 @@ async function exportPng() {
   canvas.height = H * S;
   const ctx = canvas.getContext("2d");
   ctx.scale(S, S);
-  ctx.fillStyle = "#fcfcfb";
+  const bg = ctx.createLinearGradient(0, 0, W, H);
+  bg.addColorStop(0, "#22104a");
+  bg.addColorStop(1, THEME.bg);
+  ctx.fillStyle = bg;
   ctx.fillRect(0, 0, W, H);
+  ctx.strokeStyle = THEME.gold;  // มุมกรอบทองแบบเดียวกับการ์ดบนหน้าเว็บ
+  ctx.lineWidth = 2;
+  for (const [cx, cy, dx, dy] of [[8, 8, 1, 1], [W - 8, H - 8, -1, -1]]) {
+    ctx.beginPath();
+    ctx.moveTo(cx, cy + 26 * dy);
+    ctx.lineTo(cx, cy);
+    ctx.lineTo(cx + 26 * dx, cy);
+    ctx.stroke();
+  }
   ctx.textBaseline = "middle";
 
-  const p = r.prediction;
-  ctx.fillStyle = "#0b0b0b";
-  ctx.font = `600 20px ${FONT}`;
-  ctx.fillText(`Heatmap ${words ? "รายคำ" : "รายบรรทัด"} ของเนื้อเพลง`, PAD, PAD + 12);
-  ctx.fillStyle = "#52514e";
+  const est = state.youtube?.estimate;
+  const p = est && est.method !== "model" ? est : r.prediction;
+  const titleGrad = ctx.createLinearGradient(PAD, 0, PAD + 420, 0);
+  titleGrad.addColorStop(0, THEME.yellow);
+  titleGrad.addColorStop(1, THEME.gold);
+  ctx.fillStyle = titleGrad;
+  ctx.font = `700 22px ${DISPLAY}`;
+  ctx.fillText(`✦ Heatmap ${words ? "รายคำ" : "รายบรรทัด"} ของเนื้อเพลง`, PAD, PAD + 12);
+  ctx.fillStyle = THEME.ink2;
   ctx.font = `14px ${FONT}`;
   ctx.fillText(`ยอดวิวที่คาด ≈ ${p.views_text} วิว · ระดับ${p.level_name} (${p.level_range}) · ความมั่นใจ ${pct(p.confidence)}`, PAD, PAD + 40);
+  ctx.fillStyle = THEME.muted;
   ctx.fillText(words ? "ค่าในช่อง = P(ระดับ | คำ) จาก Naive Bayes, แต่ละแถวรวม 100%" : "ค่าในช่อง = ความน่าจะเป็นของระดับยอดวิวเมื่อทำนายทีละบรรทัด", PAD, PAD + 62);
 
   // header
   let y = PAD + titleH;
   let x = PAD;
-  ctx.fillStyle = "#1a1a19";
+  ctx.fillStyle = THEME.panel;
   ctx.fillRect(PAD, y, tableW, HEAD);
+  ctx.fillStyle = THEME.gold;
+  ctx.fillRect(PAD, y + HEAD - 2, tableW, 2);
   const headers = [
     ...cols.map((c) => ({ w: c.w, t: c.kind === "label" ? (words ? "คำ" : "เนื้อเพลง") : (words ? "ความถี่" : "#"), left: c.kind === "label" })),
     ...hm.class_names.map((name, i) => ({ w: cellW, t: name, s: ranges[i] })),
     { w: topW, t: "แนวโน้ม" },
   ];
   for (const h of headers) {
-    ctx.fillStyle = "#ffffff";
-    ctx.font = `600 14px ${FONT}`;
+    ctx.fillStyle = THEME.yellow;
+    ctx.font = `600 14px ${DISPLAY}`;
     ctx.textAlign = h.left ? "left" : "center";
     const tx = h.left ? x + 10 : x + h.w / 2;
     ctx.fillText(h.t, tx, y + (h.s ? 18 : HEAD / 2));
     if (h.s) {
       ctx.font = `12px ${FONT}`;
-      ctx.fillStyle = "#c3c2b7";
+      ctx.fillStyle = THEME.muted;
       ctx.fillText(fitText(ctx, h.s, h.w - 8), tx, y + 36);
     }
     x += h.w + GAP;
@@ -430,7 +445,7 @@ async function exportPng() {
     x = PAD;
     for (const c of cols) {
       const isLabel = c.kind === "label";
-      ctx.fillStyle = row.scores || !isLabel ? "#0b0b0b" : "#898781";
+      ctx.fillStyle = row.scores || !isLabel ? THEME.ink : THEME.muted;
       ctx.font = isLabel ? `500 14px ${FONT}` : `14px ${FONT}`;
       ctx.textAlign = isLabel ? "left" : "center";
       const text = isLabel ? fitText(ctx, String(row.label), c.w - 16) : String(row.extra);
@@ -439,21 +454,22 @@ async function exportPng() {
     }
     for (let k = 0; k < n; k++) {
       const v = row.scores ? row.scores[k] : null;
-      const col = v === null ? { bg: "#f0efec", fg: "#898781" } : cellColor(v, false);
+      const col = v === null ? { bg: THEME.nullCell, fg: THEME.muted } : cellColor(v);
       ctx.fillStyle = col.bg;
       ctx.beginPath();
-      ctx.roundRect(x, y, cellW, ROW, 4);
+      ctx.roundRect(x, y, cellW, ROW, 6);
       ctx.fill();
       ctx.fillStyle = col.fg;
-      ctx.font = `14px ${FONT}`;
+      ctx.font = `600 14px ${FONT}`;
       ctx.textAlign = "center";
       ctx.fillText(v === null ? "–" : pct(v), x + cellW / 2, y + ROW / 2);
       x += cellW + GAP;
     }
-    ctx.fillStyle = "#0b0b0b";
-    ctx.font = `600 14px ${FONT}`;
+    ctx.fillStyle = THEME.yellow;
+    ctx.font = `600 14px ${DISPLAY}`;
     ctx.fillText(row.top === null || row.top === undefined ? "–" : hm.class_names[row.top], x + topW / 2, y + ROW / 2);
-    ctx.strokeStyle = "#e1e0d9";
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = THEME.line;
     ctx.beginPath();
     ctx.moveTo(PAD, y + ROW + GAP / 2);
     ctx.lineTo(PAD + tableW, y + ROW + GAP / 2);
@@ -464,16 +480,18 @@ async function exportPng() {
   // legend
   y += 20;
   ctx.textAlign = "left";
-  ctx.fillStyle = "#898781";
+  ctx.fillStyle = THEME.muted;
   ctx.font = `13px ${FONT}`;
   ctx.fillText("0%", PAD, y + 7);
   const gx = PAD + 28, gw = 200;
   const grad = ctx.createLinearGradient(gx, 0, gx + gw, 0);
   RAMP.forEach((c, i) => grad.addColorStop(i / (RAMP.length - 1), c));
   ctx.fillStyle = grad;
-  ctx.fillRect(gx, y + 2, gw, 10);
-  ctx.fillStyle = "#898781";
-  ctx.fillText("100%   สีเข้มขึ้น = สัมพันธ์กับระดับยอดวิวนั้นมากขึ้น", gx + gw + 8, y + 7);
+  ctx.beginPath();
+  ctx.roundRect(gx, y + 2, gw, 10, 5);
+  ctx.fill();
+  ctx.fillStyle = THEME.muted;
+  ctx.fillText("100%   สว่างขึ้น (ทอง) = สัมพันธ์กับระดับยอดวิวนั้นมากขึ้น", gx + gw + 8, y + 7);
 
   canvas.toBlob((blob) => download(blob, `lyrics_heatmap_${words ? "words" : "lines"}.png`), "image/png");
 }
@@ -548,7 +566,6 @@ $("ytForm").addEventListener("submit", (e) => {
 });
 $("btnXlsx").addEventListener("click", exportXlsx);
 $("btnPng").addEventListener("click", exportPng);
-darkQuery.addEventListener("change", renderHeatmap);
 bindTooltip();
 updateCounter();
 loadInfo();

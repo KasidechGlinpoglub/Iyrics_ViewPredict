@@ -6,14 +6,41 @@
   <title>ทำนายยอดวิวจากเนื้อเพลง</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <meta name="theme-color" content="#140a2e">
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;600;700&family=Kanit:ital,wght@0,500;0,600;0,700;1,600;1,700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
+  <!-- ฉากหลัง: ท้องฟ้ากลางคืน ดาวกระพริบ ประกายลอย (ตกแต่งอย่างเดียว) -->
+  <div class="sky" aria-hidden="true">
+    <span class="stars s1"></span><span class="stars s2"></span><span class="stars s3"></span>
+    <span class="spark" style="--x:8%;--y:22%;--d:0s"></span>
+    <span class="spark" style="--x:92%;--y:12%;--d:1.6s"></span>
+    <span class="spark" style="--x:78%;--y:68%;--d:3.1s"></span>
+    <span class="spark" style="--x:18%;--y:84%;--d:2.2s"></span>
+    <span class="spark" style="--x:50%;--y:40%;--d:4.4s"></span>
+  </div>
+
   <header class="topbar">
-    <div>
-      <h1>ทำนายยอดวิว YouTube จากเนื้อเพลง</h1>
-      <p class="tagline">Multinomial Naive Bayes · TF-IDF · ตัดคำภาษาไทยด้วย PyThaiNLP</p>
+    <div class="brand">
+      <svg class="logo" viewBox="0 0 64 64" aria-hidden="true">
+        <defs>
+          <linearGradient id="lg-gold" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0" stop-color="#fff2b3"/><stop offset=".55" stop-color="#f5c542"/><stop offset="1" stop-color="#e0901a"/>
+          </linearGradient>
+          <linearGradient id="lg-violet" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0" stop-color="#a78bfa"/><stop offset="1" stop-color="#5b21b6"/>
+          </linearGradient>
+        </defs>
+        <circle cx="32" cy="32" r="29" fill="url(#lg-violet)" stroke="url(#lg-gold)" stroke-width="2.5"/>
+        <path d="M27 16v22.5a7 7 0 1 0 4 6.3V26l12-3v12.5a7 7 0 1 0 4 6.3V12z" fill="url(#lg-gold)"/>
+        <path d="M51 7l1.6 4.4L57 13l-4.4 1.6L51 19l-1.6-4.4L45 13l4.4-1.6z" fill="#fff6cc"/>
+      </svg>
+      <div>
+        <p class="kicker">Lyrics × Naive Bayes × YouTube</p>
+        <h1>ทำนายยอดวิว <span class="grad">YouTube</span> จากเนื้อเพลง</h1>
+        <p class="tagline">Multinomial Naive Bayes · TF-IDF · ตัดคำภาษาไทยด้วย PyThaiNLP</p>
+      </div>
     </div>
     <span class="badge" id="demoBadge" hidden title="ใส่ data/songs.csv จริงแล้วรัน python train.py">ใช้ข้อมูลจำลอง</span>
   </header>
@@ -108,7 +135,7 @@
 
     <div class="legend">
       <span>0%</span><span class="legend-ramp" id="legendRamp"></span><span>100%</span>
-      <span class="legend-note">สีเข้มขึ้น = สัมพันธ์กับระดับยอดวิวนั้นมากขึ้น</span>
+      <span class="legend-note">สว่างขึ้น (ทอง) = สัมพันธ์กับระดับยอดวิวนั้นมากขึ้น</span>
     </div>
 
     <div class="table-wrap">

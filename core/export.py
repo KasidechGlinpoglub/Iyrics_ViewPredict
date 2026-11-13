@@ -8,16 +8,18 @@ from openpyxl import Workbook
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
 
-# sequential ramp (ฟ้าอ่อน -> น้ำเงินเข้ม) ใช้ชุดเดียวกับหน้าเว็บ
+# sequential ramp ธีมเดียวกับหน้าเว็บ (ม่วง × ทอง) แต่กลับด้านสำหรับพื้นขาวของ Excel:
+# ค่าน้อย = เหลืองอ่อน -> ส้ม -> ชมพู -> ม่วงเข้ม = ค่ามาก
 RAMP = [
-    "CDE2FB", "B7D3F6", "9EC5F4", "86B6EF", "6DA7EC", "5598E7", "3987E5",
-    "2A78D6", "256ABF", "1C5CAB", "184F95", "104281", "0D366B",
+    "FCFFA4", "F6D746", "FCA50A", "F37819", "DD513A", "BC3754",
+    "932667", "781C6D", "5C126E", "420A68", "2B1257",
 ]
-WHITE_TEXT_FROM = 7  # index ใน RAMP ที่เริ่มใช้ตัวอักษรสีขาว
-INK = "0B0B0B"
-MUTED_FILL = "F0EFEC"
-HEADER_FILL = "1A1A19"
-LINK = "256ABF"
+WHITE_TEXT_FROM = 4  # index ใน RAMP ที่เริ่มใช้ตัวอักษรสีขาว
+INK = "2A1059"
+MUTED_FILL = "EFEAFB"
+HEADER_FILL = "2B1257"
+HEADER_TEXT = "F5C542"
+LINK = "6D28D9"
 FONT = "Tahoma"
 THIN = Side(style="thin", color="FFFFFF")
 
@@ -56,15 +58,15 @@ def _heat(cell, value: float | None):
 
 def _header(ws, row: int, values: list[str]):
     for col, v in enumerate(values, start=1):
-        c = _put(ws, row, col, v, bold=True, color="FFFFFF")
+        c = _put(ws, row, col, v, bold=True, color=HEADER_TEXT)
         c.fill = PatternFill("solid", fgColor=HEADER_FILL)
         c.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
     ws.row_dimensions[row].height = 34
 
 
 def _title(ws, text: str, sub: str):
-    _put(ws, 1, 1, text, bold=True, size=14)
-    _put(ws, 2, 1, sub, color="52514E")
+    _put(ws, 1, 1, "✦ " + text, bold=True, size=14, color="5B21B6")
+    _put(ws, 2, 1, sub, color="6B5A99")
 
 
 def _widths(ws, widths: dict[str, float]):
