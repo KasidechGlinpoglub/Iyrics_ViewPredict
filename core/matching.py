@@ -202,10 +202,13 @@ def find_on_youtube(yt, lyrics: str, tokens: list[str], user_query: str = "", ca
     return grouped, queries, all_cached
 
 
-def pick_results(grouped: list[dict], limit: int, min_score: float = 0.1, min_shown: int = 3) -> list[dict]:
-    """ตัดผลที่แทบไม่เกี่ยวกับเนื้อเพลงทิ้ง แต่ให้เหลืออย่างน้อย min_shown รายการเป็นตัวเลือก"""
-    strong = [v for v in grouped if v["score"] >= min_score]
-    return (strong if len(strong) >= min_shown else grouped[:min_shown])[:limit]
+def pick_results(grouped: list[dict], limit: int, min_score: float = 0.1, min_shown: int = 3,
+                 min_views: int = 1_000) -> list[dict]:
+    """ตัดผลที่แทบไม่เกี่ยวกับเนื้อเพลงทิ้ง แต่ให้เหลืออย่างน้อย min_shown รายการเป็นตัวเลือก
+    เพลงอื่น (ไม่ใช่เพลงที่ผู้ใช้ใส่) ต้องมีคนดูอย่างน้อย min_views ครั้ง กันคลิปโฆษณา/คลิปส่วนตัวที่หลุดมาในหมวด Music"""
+    pool = [v for v in grouped if v.get("is_input_song") or v["views"] is None or v["views"] >= min_views]
+    strong = [v for v in pool if v["score"] >= min_score]
+    return (strong if len(strong) >= min_shown else pool[:min_shown])[:limit]
 
 
 def group_versions(scored: list[dict]) -> list[dict]:
@@ -222,7 +225,7 @@ def group_versions(scored: list[dict]) -> list[dict]:
     for members in groups.values():
         best = max(members, key=lambda x: x["score"])
         shown = max(members, key=lambda x: x["views"] if x["views"] is not None else -1)
-        merged.append({**shown, "score": best["score"], "reason": best["reason"],
-                       "signals": best["signals"], "versions": len(members)})
+        merged.append({**shown, "score": best["score"], "reason": best["reason"], "signals": best["signals"],
+                       "versions": len(members), "is_input_song": any(m.get("is_input_song") for m in members)})
     merged.sort(key=lambda x: -round(x["score"], 3))  # stable: เสมอกันคงลำดับความเกี่ยวข้องของ YouTube
     return merged
