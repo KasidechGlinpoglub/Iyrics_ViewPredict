@@ -273,8 +273,11 @@ def find_on_youtube(yt, lyrics: str, tokens: list[str], user_query: str = "", ca
     """ค้นบน YouTube แล้วจัดอันดับ คืนค่า (เพลงที่รวมเวอร์ชันแล้ว เรียงตามคะแนน, คำค้นที่ใช้, มาจาก cache ทั้งหมดหรือไม่)
 
     รอบ 1: คำที่หายากที่สุด -> มักเจอตัวเพลงนั้นเอง (และ cover/live/karaoke ของมัน)
-    รอบ 2: ถ้าได้เพลงไม่ถึง min_songs เพลง ค้นต่อด้วยคำ "บอกธีม" 2 คำ (หายากปานกลาง เช่น เมืองหลวง ฝุ่น)
-           โดยตัดคำในชื่อเพลงที่เจอแล้ว เพื่อหาเพลงอื่นที่เนื้อหาใกล้เคียง
+    รอบ 2 (ไม่เกินหนึ่งรอบ):
+      - ยังไม่เจอคลิปที่เนื้อเพลงตรงกัน -> ค้นด้วยท่อนฮุก (YouTube ค้นข้อความในคำอธิบายคลิปซึ่งมักมีเนื้อเพลง)
+        ช่วยเพลงที่ชื่อเป็นคำธรรมดา เช่น "ร่างกายต้องการหมอลำ" ซึ่งคำหายากหาไม่เจอ
+      - เจอแล้วแต่ได้เพลงไม่ถึง min_songs เพลง -> ค้นด้วยคำ "บอกธีม" 2 คำ (หายากปานกลาง เช่น เมืองหลวง ฝุ่น)
+        โดยตัดคำในชื่อเพลงที่เจอแล้ว เพื่อหาเพลงอื่นที่เนื้อหาใกล้เคียง
     ผู้ใช้แก้คำค้นเอง -> ค้นรอบเดียวตามนั้น
     """
     from .youtube import YouTubeError
@@ -284,23 +287,49 @@ def find_on_youtube(yt, lyrics: str, tokens: list[str], user_query: str = "", ca
     infos = yt.videos(ids)
     videos = [infos[i] for i in ids if i in infos]
     grouped = group_versions(score_videos(lyrics, tokens, videos))
+    if user_query or not tokens:
+        return grouped, queries, all_cached
 
-    if not user_query and tokens and len(grouped) < min_songs:
-        top = grouped[0] if grouped else None
-        found_words = set(top["group"].split("|")) if top and top["score"] >= 0.5 else set()
-        second = " ".join(search_keywords([t for t in tokens if t not in found_words], k=2, lo=THEME_FREQ[0], hi=THEME_FREQ[1]))
-        if second and second != queries[0]:
-            try:
-                ids2, cached2 = yt.search(second, max_results=candidates)
-            except YouTubeError:  # โควตาหมดระหว่างรอบ 2: ใช้ผลรอบแรกไปก่อน
-                return grouped, queries, all_cached
-            seen = {v["video_id"] for v in videos}
-            infos2 = yt.videos([i for i in ids2 if i not in seen])
-            videos += [infos2[i] for i in ids2 if i in infos2]
-            grouped = group_versions(score_videos(lyrics, tokens, videos))
-            queries.append(second)
-            all_cached = all_cached and cached2
-    return grouped, queries, all_cached
+    if not any(g.get("is_input_song") for g in grouped):
+        second = hook_line(lyrics)
+    elif len(grouped) < min_songs:
+        top = grouped[0]
+        found_words = set(top["group"].split("|")) if top["score"] >= 0.5 else set()
+        rest = [t for t in tokens if t not in found_words]
+        second = " ".join(search_keywords(rest, k=2, lo=THEME_FREQ[0], hi=THEME_FREQ[1]))
+    else:
+        return grouped, queries, all_cached
+    if not second or second == queries[0]:
+        return grouped, queries, all_cached
+
+    try:
+        ids2, cached2 = yt.search(second, max_results=candidates)
+    except YouTubeError:  # โควตาหมดระหว่างรอบ 2: ใช้ผลรอบแรกไปก่อน
+        return grouped, queries, all_cached
+    seen = {v["video_id"] for v in videos}
+    infos2 = yt.videos([i for i in ids2 if i not in seen])
+    videos += [infos2[i] for i in ids2 if i in infos2]
+    grouped = group_versions(score_videos(lyrics, tokens, videos))
+    queries.append(second)
+    return grouped, queries, all_cached and cached2
+
+
+def hook_line(lyrics: str, max_chars: int = 60) -> str:
+    """ท่อนฮุก = บรรทัดที่ร้องซ้ำมากที่สุด (ยาวพอ) ถ้าไม่มีบรรทัดซ้ำ ใช้บรรทัดที่มีคำหายากมากที่สุด"""
+    lines = [ln for ln in split_lines(lyrics) if len(normalize(ln)) >= MIN_LINE_CHARS]
+    if not lines:
+        return ""
+    counts = Counter(normalize(ln) for ln in lines)
+
+    def strength(line: str) -> tuple:
+        words = tokenize(line)
+        return counts[normalize(line)], sum(rarity(w) for w in set(words)), len(words)
+
+    best = max(lines, key=strength)
+    if len(best) <= max_chars:
+        return best
+    cut = best[:max_chars]
+    return cut[: cut.rfind(" ")] if " " in cut else cut
 
 
 def pick_results(grouped: list[dict], limit: int, min_score: float = 0.1, min_shown: int = 3,
