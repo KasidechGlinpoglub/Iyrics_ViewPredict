@@ -18,6 +18,8 @@ EN_STOPWORDS = frozenset(
     this that these those so do does did done not no yes just can could will would shall
     should have has had there here what when where who how all any up down out into over
     oh ooh uh yeah yea hey ah eh la na da woo whoa ha
+    don won wouldn couldn shouldn didn doesn isn aren wasn weren ain haven hasn hadn ve ll re im
+    gonna wanna gotta cause cuz till ya yo
     """.split()
 )
 # คำสร้อย/คำอุทานที่พบบ่อยในเพลงไทย ไม่ช่วยบอกยอดวิว
@@ -51,6 +53,39 @@ def tokenize(text: str) -> list[str]:
 
 def split_lines(text: str) -> list[str]:
     return [line.strip() for line in str(text).splitlines() if line.strip()]
+
+
+# ---- ทำความสะอาดเนื้อเพลงที่ผู้ใช้วางมา (จากเว็บเนื้อเพลง/คำอธิบาย YouTube)
+_SECTION = (r"(?:pre[- ]?chorus|post[- ]?chorus|chorus|verse|hook|bridge|intro|outro|refrain|rap|interlude|"
+            r"ท่อนฮุก|ฮุก|ท่อนแร็พ|แร็พ|ท่อน\s*\d*|ซ้ำ(?:\s*\*+)?|\*+)")
+_LABEL_LINE = re.compile(rf"^[\s\[(（【{{]*{_SECTION}[\s\d:：.)\]）】}}x×*]*$", re.IGNORECASE)
+_LABEL_PREFIX = re.compile(rf"^\s*(?:[\[(（【]\s*{_SECTION}[^\])）】]*[\])）】]|{_SECTION}\s*[:：]|\*+)\s*", re.IGNORECASE)
+_REPEAT_MARK = re.compile(r"[\[(（]\s*(?:ซ้ำ|repeat|x\s*\d|×\s*\d|\*+)[^\])）]*[\])）]|\s[x×]\s?\d\s*$", re.IGNORECASE)
+_CREDIT = re.compile(
+    r"^\s*(?:ศิลปิน|นักร้อง|ร้องโดย|เพลง|ชื่อเพลง|คำร้อง|ทำนอง|เรียบเรียง|โปรดิวซ์|ค่าย|อัลบั้ม|ต้นฉบับ|"
+    r"artist|singer|title|song|lyrics?(?:\s+by)?|music(?:\s+by)?|composer|composed by|written by|"
+    r"produced by|producer|prod\.?|arranged by|arranger|album|label|feat\.?|ft\.?)\s*[:：/|]",
+    re.IGNORECASE,
+)
+_JUNK_LINE = re.compile(r"https?://|www\.|^#|@\w|©|℗", re.IGNORECASE)
+# บรรทัดหัวเพลงแบบ "ชื่อเพลง - ศิลปิน" / "Artist - Title (Lyrics)": ข้อความสั้นสองฝั่งคั่นด้วย - – | (มีช่องว่างรอบ)
+_HEADER_LINE = re.compile(r"^[^-–—|]{1,45}\s[-–—|]\s[^-–—|]{1,60}$")
+
+
+def clean_lyrics(text: str) -> str:
+    """ตัดสิ่งที่ไม่ใช่เนื้อร้อง: ป้ายท่อน ([Chorus], ท่อนฮุก:, *), เครื่องหมายซ้ำ ((ซ้ำ *), x2),
+    บรรทัดเครดิต (คำร้อง: / Composer:) และลิงก์/แฮชแท็ก"""
+    out = []
+    for raw in str(text).splitlines():
+        line = raw.strip()
+        if not line or _LABEL_LINE.match(line) or _CREDIT.match(line) or _JUNK_LINE.search(line):
+            continue
+        if _HEADER_LINE.match(line) and len(line.split()) <= 10:  # หัวเพลง ไม่ใช่เนื้อร้อง
+            continue
+        line = _REPEAT_MARK.sub(" ", _LABEL_PREFIX.sub("", line)).strip(" *-–—")
+        if line:
+            out.append(line)
+    return "\n".join(out)
 
 
 def identity(tokens):

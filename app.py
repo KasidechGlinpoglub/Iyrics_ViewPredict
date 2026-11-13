@@ -19,7 +19,7 @@ from core.config import BASE_DIR, env_int  # โหลด .env ก่อนส�
 from core.export import build_workbook
 from core.matching import find_on_youtube, pick_results, search_keywords
 from core.model import LyricsModel, format_views
-from core.text import tokenize
+from core.text import clean_lyrics, tokenize
 from core.youtube import YouTubeClient, YouTubeError, extract_video_id
 
 MODEL_PATH = BASE_DIR / "models" / "lyrics_nb.joblib"
@@ -88,11 +88,14 @@ def _json_body() -> dict:
 
 
 def _lyrics_from(data: dict, required: bool = True) -> str:
-    lyrics = str(data.get("lyrics", "") or "").strip()
-    if required and not lyrics:
+    raw = str(data.get("lyrics", "") or "").strip()
+    if required and not raw:
         raise ValueError("กรุณาใส่เนื้อเพลง")
-    if len(lyrics) > MAX_CHARS:
+    if len(raw) > MAX_CHARS:
         raise ValueError(f"เนื้อเพลงยาวเกิน {MAX_CHARS:,} ตัวอักษร")
+    lyrics = clean_lyrics(raw)  # ตัดป้ายท่อน [Chorus] / (ซ้ำ *) / เครดิต ที่ติดมาจากเว็บเนื้อเพลง
+    if required and not lyrics:
+        raise ValueError("ไม่พบเนื้อร้อง (มีแต่ป้ายท่อนหรือเครดิต)")
     return lyrics
 
 
