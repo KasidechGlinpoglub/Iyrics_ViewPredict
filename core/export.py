@@ -72,7 +72,7 @@ def _widths(ws, widths: dict[str, float]):
         ws.column_dimensions[col].width = w
 
 
-def build_workbook(result: dict, lyrics: str, youtube_results: list | None = None) -> BytesIO:
+def build_workbook(result: dict, lyrics: str, youtube_results: list | None = None, estimate: dict | None = None) -> BytesIO:
     hm = result["heatmap"]
     pred = result["prediction"]
     names = hm["class_names"]
@@ -121,11 +121,21 @@ def build_workbook(result: dict, lyrics: str, youtube_results: list | None = Non
     # ---- Sheet 3: สรุปผลทำนาย + เพลงใกล้เคียง + ผลค้นหา YouTube
     ws3 = wb.create_sheet("สรุปผลทำนาย")
     _title(ws3, "ผลทำนายยอดวิว YouTube จากเนื้อเพลง", f"สร้างเมื่อ {stamp}")
-    rows = [
-        ("ยอดวิวที่คาด", pred["views"], "#,##0"),
-        ("ยอดวิวที่คาด (ข้อความ)", pred["views_text"], None),
-        ("ระดับที่คาด", f"{pred['level_name']} ({pred['level_range']})", None),
-        ("ความมั่นใจ", pred["confidence"], "0.0%"),
+    rows = []
+    if estimate and estimate["method"] != "model":
+        how = ("ยอดวิวจริงของเพลงนี้บน YouTube" if estimate["method"] == "exact"
+               else f"รวมยอดวิวจริงของเพลงที่คล้ายกัน {estimate['evidence_count']} เพลง")
+        rows += [
+            ("ยอดวิวที่คาด (รวมข้อมูล YouTube)", estimate["views"], "#,##0"),
+            ("ยอดวิวที่คาด (ข้อความ)", estimate["views_text"], None),
+            ("ระดับที่คาด", f"{estimate['level_name']} ({estimate['level_range']})", None),
+            ("ที่มา", how, None),
+            ("น้ำหนักของโมเดลจากเนื้อเพลง", estimate["model_share"], "0.0%"),
+        ]
+    rows += [
+        ("ยอดวิวที่คาดจากเนื้อเพลงอย่างเดียว (Naive Bayes)", pred["views"], "#,##0"),
+        ("ระดับที่คาด (Naive Bayes)", f"{pred['level_name']} ({pred['level_range']})", None),
+        ("ความมั่นใจ (Naive Bayes)", pred["confidence"], "0.0%"),
         ("คำที่โมเดลรู้จัก", f"{result['tokens']['known']} / {result['tokens']['total']} คำ", None),
     ]
     for r, (label, value, fmt) in enumerate(rows, start=4):
@@ -173,7 +183,7 @@ def build_workbook(result: dict, lyrics: str, youtube_results: list | None = Non
     c.font = Font(name=FONT)
     ws3.merge_cells(start_row=r + 1, start_column=1, end_row=r + 1, end_column=5)
     ws3.row_dimensions[r + 1].height = min(409, 15 * (lyrics.count("\n") + 2))
-    _widths(ws3, {"A": 38, "B": 22, "C": 16, "D": 14, "E": 48})
+    _widths(ws3, {"A": 46, "B": 30, "C": 16, "D": 14, "E": 48})
 
     buf = BytesIO()
     wb.save(buf)

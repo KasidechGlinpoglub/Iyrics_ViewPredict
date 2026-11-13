@@ -36,6 +36,11 @@ MAX_LINES = 300
 # ระดับยอดวิวแบบคงที่ (log10): < 1 แสน, 1 แสน – 1 ล้าน, ≥ 1 ล้าน
 FIXED_EDGES = [5.0, 6.0]
 FIXED_NAMES = ["หลักหมื่น", "หลักแสน", "หลักล้าน"]
+# การรวมผลโมเดลกับยอดวิวจริงบน YouTube (LyricsModel.combine)
+MODEL_WEIGHT = 0.3        # น้ำหนักโมเดลเมื่อรู้จักคำในเนื้อเพลงเพียงพอ (เทียบเท่าเพลงที่คล้าย 30%)
+MODEL_WEIGHT_MIN = 0.02
+FULL_COVERAGE = 0.6       # รู้จักคำ 60% ขึ้นไปถือว่าโมเดลมีข้อมูลพอ
+EXACT_MIN_SCORE = 0.5     # เนื้อเพลงตรงกันตั้งแต่ 50% = เพลงเดียวกัน ใช้ยอดวิวจริง
 
 
 # ---------------------------------------------------------------- utilities
@@ -250,6 +255,64 @@ class LyricsModel:
             "tokens": {"total": len(tokens), "known": len(known), "unique": len(set(tokens))},
             "similar": self.similar(tokens, top_k),
             "heatmap": self.heatmap(lyrics, tokens),
+        }
+
+    def combine(self, result: dict, evidence: list[dict]) -> dict:
+        """รวมผลโมเดล (ดูจากเนื้อเพลงอย่างเดียว) กับยอดวิวจริงของเพลงบน YouTube ให้ตัวเลขสอดคล้องกับข้อมูลจริง
+
+        evidence: [{views, score (0–1 ความตรงกับเนื้อเพลง), is_input_song, title}]
+        - เจอเพลงนี้บน YouTube (เนื้อเพลงตรงกัน) -> ใช้ยอดวิวจริงของเพลงนั้น
+        - ไม่เจอ -> ค่าเฉลี่ยเรขาคณิตถ่วงน้ำหนัก: โมเดลมีน้ำหนักตามสัดส่วนคำที่รู้จัก, เพลงอื่นมีน้ำหนัก = % ความคล้าย
+          (เฉลี่ยใน log10 เพราะยอดวิวต่างกันเป็นร้อยเท่าได้ ค่าเฉลี่ยธรรมดาจะถูกเพลงดังเพลงเดียวลากไป)
+        """
+        names, ranges, edges = self.b["class_names"], self.b["class_ranges"], np.array(self.b["edges"])
+        model_views = max(1, int(result["prediction"]["views"]))
+        model_p = np.array([p["prob"] for p in result["probabilities"]])
+        tokens = result["tokens"]
+        coverage = tokens["known"] / max(1, tokens["total"])
+        alpha = max(MODEL_WEIGHT_MIN, MODEL_WEIGHT * min(1.0, coverage / FULL_COVERAGE))
+
+        items = [e for e in evidence if isinstance(e.get("views"), (int, float)) and e["views"] > 0
+                 and isinstance(e.get("score"), (int, float)) and e["score"] > 0]
+        exact = max((e for e in items if e.get("is_input_song") and e["score"] >= EXACT_MIN_SCORE),
+                    key=lambda e: (e["score"], e["views"]), default=None)
+
+        def level_of(log_views: float) -> int:
+            return int(np.digitize(log_views, edges))
+
+        if exact:
+            method, used = "exact", [(exact, 1.0)]
+            final_log = float(np.log10(exact["views"]))
+        elif items:
+            method, used = "blend", [(e, float(e["score"])) for e in items]
+            total = alpha + sum(w for _, w in used)
+            final_log = (alpha * np.log10(model_views) + sum(w * np.log10(e["views"]) for e, w in used)) / total
+        else:
+            method, used = "model", []
+            final_log = float(np.log10(model_views))
+
+        probs = alpha * model_p
+        for e, w in used:
+            probs[level_of(np.log10(e["views"]))] += w
+        probs = probs / probs.sum()
+        level = level_of(final_log)
+        views = float(10 ** final_log)
+        weight_total = alpha + sum(w for _, w in used)
+        return {
+            "method": method,
+            "views": round(views),
+            "views_text": format_views(views),
+            "level": level,
+            "level_name": names[level],
+            "level_range": ranges[level],
+            "confidence": round(float(probs[level]), 4),
+            "probabilities": [{"name": n, "range": r, "prob": round(float(p), 4)} for n, r, p in zip(names, ranges, probs)],
+            "model_views": model_views,
+            "model_views_text": format_views(model_views),
+            "model_share": round(alpha / weight_total, 4),
+            "evidence_count": len(used),
+            "exact_title": exact["title"] if exact else None,
+            "exact_score": round(float(exact["score"]), 4) if exact else None,
         }
 
     def similar(self, tokens: list[str], top_k: int = 5) -> list[dict]:

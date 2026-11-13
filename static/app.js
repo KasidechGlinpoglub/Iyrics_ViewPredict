@@ -99,21 +99,41 @@ async function loadExample() {
 }
 
 // ------------------------------------------------------------------ result
-function renderResult(r) {
-  const p = r.prediction;
-  $("resultEmpty").hidden = true;
-  $("resultBody").hidden = false;
+/** ตัวเลขใหญ่ + ระดับ + กราฟความน่าจะเป็น (ใช้ทั้งผลโมเดลล้วน และผลที่รวมยอดวิวจริงจาก YouTube แล้ว) */
+function renderPrediction(p, probabilities, label, note = "") {
+  $("heroLabel").textContent = label;
   $("heroViews").textContent = p.views_text;
   $("heroSub").innerHTML =
-    `≈ ${fmtInt(p.views)} ครั้ง · ระดับ <b>${esc(p.level_name)}</b> (${esc(p.level_range)}) · ความมั่นใจ ${pct(p.confidence)}`;
-
-  $("probs").innerHTML = r.probabilities.map((c, i) => `
+    `≈ ${fmtInt(p.views)} ครั้ง · ระดับ <b>${esc(p.level_name)}</b> (${esc(p.level_range)}) · ความมั่นใจ ${pct(p.confidence)}` +
+    (note ? `<br>${note}` : "");
+  $("probs").innerHTML = probabilities.map((c, i) => `
     <div class="prob-row${i === p.level ? " is-top" : ""}" role="listitem"
          data-tip="<b>${esc(c.name)}</b> ${esc(c.range)}<br>ความน่าจะเป็น <b>${pct(c.prob)}</b>">
       <div class="prob-label">${esc(c.name)}${i === p.level ? '<span class="tag">คาดการณ์</span>' : ""}<small>${esc(c.range)}</small></div>
       <div class="prob-track"><div class="prob-bar" style="width:${(c.prob * 100).toFixed(2)}%"></div></div>
       <div class="prob-value">${pct(c.prob)}</div>
     </div>`).join("");
+}
+
+/** ผลที่รวมยอดวิวจริงของเพลงบน YouTube (มาพร้อมผลค้นหา) */
+function renderEstimate(e) {
+  if (!e || e.method === "model") return;
+  const modelNote = `โมเดลจากเนื้อเพลงอย่างเดียว (Naive Bayes) คาด ${esc(e.model_views_text)} วิว`;
+  if (e.method === "exact") {
+    renderPrediction(e, e.probabilities, "ยอดวิวจริงของเพลงนี้บน YouTube",
+      `พบเพลงนี้บน YouTube: <b>${esc(e.exact_title)}</b> (เนื้อเพลงตรงกัน ${pct(e.exact_score)}) · ${modelNote}`);
+  } else {
+    renderPrediction(e, e.probabilities, "ยอดวิวที่คาดว่าจะได้",
+      `ค่าเฉลี่ยยอดวิวจริงของเพลงที่คล้ายกัน ${e.evidence_count} เพลง (ถ่วงตาม % ความคล้าย, น้ำหนัก ${pct(1 - e.model_share)}) ` +
+      `รวมกับ${modelNote} (น้ำหนัก ${pct(e.model_share)})`);
+  }
+}
+
+function renderResult(r) {
+  $("resultEmpty").hidden = true;
+  $("resultBody").hidden = false;
+  renderPrediction(r.prediction, r.probabilities, "ยอดวิวที่คาดว่าจะได้",
+    ytEnabled() ? "กำลังปรับด้วยยอดวิวจริงของเพลงที่คล้ายกันบน YouTube…" : "");
 
   const t = r.tokens;
   $("coverage").textContent =
@@ -183,6 +203,10 @@ async function searchYoutube(query = "") {
     state.youtube = null;
     ytStatus(e.message, true);
     if (e.code === "no_key") renderYoutubeDisabled();
+    if (state.result) {  // ค้น YouTube ไม่ได้: ใช้ผลจากเนื้อเพลงอย่างเดียว
+      renderPrediction(state.result.prediction, state.result.probabilities, "ยอดวิวที่คาดว่าจะได้",
+        "ใช้ผลจากเนื้อเพลงอย่างเดียว (ยังปรับด้วยยอดวิวจริงบน YouTube ไม่ได้)");
+    }
   } finally {
     btn.disabled = false;
   }
@@ -217,8 +241,10 @@ function renderYoutube(data) {
       </div>
     </li>`;
   }).join("");
+  const est = data.estimate && data.estimate.method !== "model" ? data.estimate : state.result.prediction;
+  renderEstimate(data.estimate);
   $("ytBench").innerHTML = data.median_views_text
-    ? `ค่ากลางยอดวิวของเพลงเหล่านี้บน YouTube ตอนนี้ <b>${esc(data.median_views_text)} วิว</b> · โมเดลคาด <b>${esc(state.result.prediction.views_text)} วิว</b>` +
+    ? `ค่ากลางยอดวิวของเพลงเหล่านี้บน YouTube ตอนนี้ <b>${esc(data.median_views_text)} วิว</b> · ผลทำนาย <b>${esc(est.views_text)} วิว</b>` +
       ` <span class="tt-muted">(ดึงเมื่อ ${esc(new Date(data.fetched_at).toLocaleTimeString("th-TH"))}${data.cached ? ", ใช้ผลค้นหาที่เก็บไว้" : ""})</span>`
     : "";
 }

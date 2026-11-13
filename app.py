@@ -157,8 +157,10 @@ def export_xlsx():
     lyrics = _lyrics_from(data)
     result = get_model().predict(lyrics)
     yt = data.get("youtube") if isinstance(data.get("youtube"), list) else []
+    yt = yt[:YT_RESULTS_SHOWN]
+    estimate = get_model().combine(result, _evidence(yt)) if yt else None
     return send_file(
-        build_workbook(result, lyrics, youtube_results=yt[:YT_RESULTS_SHOWN]),
+        build_workbook(result, lyrics, youtube_results=yt, estimate=estimate),
         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         as_attachment=True,
         download_name="lyrics_heatmap.xlsx",
@@ -194,6 +196,7 @@ def youtube_search():
             "match_reason": v["reason"],
             "signals": v["signals"],
             "versions": v["versions"],
+            "is_input_song": bool(v.get("is_input_song")),
         }
         for v in ranked
     ]
@@ -206,9 +209,30 @@ def youtube_search():
         results=results,
         median_views=median,
         median_views_text=format_views(median) if median is not None else None,
+        estimate=_combined_estimate(lyrics, results),
         cached=cached,
         fetched_at=_now_iso(),
     )
+
+
+def _evidence(results: list) -> list[dict]:
+    return [
+        {"views": r.get("views"), "score": r.get("lyric_similarity"), "is_input_song": bool(r.get("is_input_song")),
+         "title": str(r.get("title", ""))}
+        for r in results if isinstance(r, dict)
+    ]
+
+
+def _combined_estimate(lyrics: str, results: list) -> dict | None:
+    """ผลทำนายที่รวมยอดวิวจริงของเพลงบน YouTube แล้ว (None ถ้าโมเดลไม่รู้จักคำในเนื้อเพลงเลย)"""
+    if not lyrics:
+        return None
+    model = get_model()
+    try:
+        base = model.predict(lyrics)
+    except ValueError:
+        return None
+    return model.combine(base, _evidence(results))
 
 
 @app.post("/api/youtube/stats")
