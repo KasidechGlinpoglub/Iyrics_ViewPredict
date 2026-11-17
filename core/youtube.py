@@ -179,6 +179,17 @@ class YouTubeClient:
                 out[info["video_id"]] = info
         return out
 
+    def video_metadata(self, ids: list[str]) -> list[dict]:
+        """อ่านชื่อ เครดิต คำอธิบาย และความยาวคลิปก่อนเก็บยอดวิว"""
+        ids = list(dict.fromkeys(ids))
+        items = []
+        for start in range(0, len(ids), 50):
+            data = self._get("videos", {
+                "part": "snippet,contentDetails", "id": ",".join(ids[start:start + 50]),
+            })
+            items.extend(data.get("items", []))
+        return items
+
     def uploads_playlist(self, channel: str) -> str:
         """หา uploads playlist จาก @handle, channel ID หรือลิงก์ของช่อง"""
         channel = channel.strip()
