@@ -53,17 +53,23 @@ python app.py                      # เปิด http://127.0.0.1:5000
 
 ตอนนี้แอปใช้ **ข้อมูลจำลอง** (`data/demo_songs.csv`: เนื้อเพลง ยอดวิว และศิลปินที่สร้างขึ้นเอง ไม่มีลิงก์จริง)
 
-1. ดึงรายชื่อเพลง + ยอดวิวจาก playlist บน YouTube (ต้องมี API key, ใช้โควตาแค่ 1 หน่วย/50 เพลง):
+1. ดึงรายการอัปโหลดและยอดวิวจากช่อง YouTube ที่เลือก (ต้องมี API key)
+   ```bash
+   python scripts/collect_youtube.py channels "@genelab" "@smallroommusic" "@yuppofficial" "@TangBadVoice" "@safeplanetband" "@timethaiofficial" -o data/raw_songs.csv
+   ```
+   ระบุช่องด้วย `@handle`, channel ID หรือลิงก์ของช่องได้ คำสั่งอ่านรายการอัปโหลดทุกหน้าและรับคลิปทุกอายุ ใช้ `--limit 50` เมื่อต้องการดูเฉพาะ 50 คลิปแรกต่อช่อง
+   รันซ้ำจะเพิ่มเฉพาะ `video_id` ใหม่และรักษาเนื้อร้องกับยอดวิวเดิมของแถวที่มีอยู่ คอลัมน์ `published_at` และ `views_collected_at` จาก API ระบุเวลาด้วย UTC ให้เทียบวันเก็บข้อมูลตามเวลาไทย
+
+   หากมีรายการคลิปที่เลือกไว้ใน playlist แล้ว ให้ใช้คำสั่งเดิม
    ```bash
    python scripts/collect_youtube.py playlist "https://www.youtube.com/playlist?list=..." -o data/raw_songs.csv
    ```
-   รันได้หลาย playlist ข้อมูลจะถูกรวมในไฟล์เดียว (ไม่ทับเนื้อเพลงที่กรอกไว้แล้ว)
-2. กรอกเนื้อเพลงในคอลัมน์ `lyrics` ของ `data/raw_songs.csv`
+2. ตรวจว่าเป็น MV ทางการ ยืนยัน `title` และ `artist` แล้วกรอก `lyrics` และ `lyrics_source` ใน `data/raw_songs.csv` สคริปต์ใช้เครดิตที่ระบุโดยตรงในคำอธิบายคลิป ถ้าหาชื่อเพลงจากเครดิตไม่ได้ จะใส่ชื่อคลิปไว้ให้ตรวจ ถ้าหาศิลปินไม่ได้ ช่อง `artist` จะว่าง ส่วน `channel` คือชื่อช่องที่เผยแพร่
 3. อัปเดตยอดวิวล่าสุดและสร้างไฟล์สำหรับเทรน (แถวที่ยังไม่มีเนื้อเพลงจะถูกข้าม):
    ```bash
    python scripts/collect_youtube.py fill data/raw_songs.csv -o data/songs.csv
    ```
-   ถ้าไม่มี API key คำสั่ง `fill` จะใช้ yt-dlp แทน (`pip install yt-dlp`)
+   คำสั่ง `fill` อัปเดตยอดวิวพร้อมเวลาที่ดึงใหม่ และแจ้งคลิปที่ดึงยอดไม่ได้ก่อนข้ามแถวนั้น ถ้าไม่มี API key จะใช้ yt-dlp แทน (`pip install yt-dlp`)
 4. `python train.py` (ถ้ามี `data/songs.csv` จะใช้แทนข้อมูลจำลองอัตโนมัติ) แล้วรัน `python app.py` ใหม่
 
 ควรมีอย่างน้อยประมาณ 200 เพลงขึ้นไปเพื่อให้ผลน่าเชื่อถือ

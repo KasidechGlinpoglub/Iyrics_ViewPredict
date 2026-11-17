@@ -13,6 +13,7 @@ import threading
 import time
 from collections import OrderedDict
 from datetime import datetime, timedelta, timezone
+from urllib.parse import unquote, urlsplit
 
 import requests
 
@@ -170,21 +171,45 @@ class YouTubeClient:
             chunk = missing[start:start + 50]
             # topicDetails ไม่เพิ่มค่าโควตา (videos.list = 1 หน่วยต่อครั้งไม่ว่าขอกี่ part)
             data = self._get("videos", {"part": "snippet,statistics,topicDetails", "id": ",".join(chunk), "maxResults": 50})
+            collected_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
             for item in data.get("items", []):
                 info = _video_info(item)
+                info["views_collected_at"] = collected_at if info["views"] is not None else ""
                 self._video_cache.set(info["video_id"], info)
                 out[info["video_id"]] = info
         return out
 
-    def playlist_video_ids(self, playlist: str, limit: int = 500) -> list[str]:
+    def uploads_playlist(self, channel: str) -> str:
+        """หา uploads playlist จาก @handle, channel ID หรือลิงก์ของช่อง"""
+        channel = channel.strip()
+        if "://" in channel:
+            url = urlsplit(channel)
+            if url.hostname not in {"youtube.com", "www.youtube.com", "m.youtube.com"}:
+                raise YouTubeError(f"ลิงก์ช่อง YouTube ไม่ถูกต้อง: {channel}")
+            path = unquote(url.path).strip("/").split("/")
+            channel = path[1] if path[0] == "channel" and len(path) > 1 else path[0]
+        if channel.startswith("@") and len(channel) > 1:
+            selector = {"forHandle": channel}
+        elif re.fullmatch(r"UC[A-Za-z0-9_-]{22}", channel):
+            selector = {"id": channel}
+        else:
+            raise YouTubeError(f"ระบุช่องด้วย @handle, channel ID หรือลิงก์ช่อง: {channel}")
+        data = self._get("channels", {"part": "contentDetails", **selector})
+        for item in data.get("items", []):
+            playlist = item.get("contentDetails", {}).get("relatedPlaylists", {}).get("uploads")
+            if playlist:
+                return playlist
+        raise YouTubeError(f"ไม่พบรายการอัปโหลดของช่อง {channel}")
+
+    def playlist_video_ids(self, playlist: str, limit: int | None = 500) -> list[str]:
         playlist_id = extract_playlist_id(playlist)
         ids, token = [], None
-        while len(ids) < limit:
+        while limit is None or len(ids) < limit:
             params = {"part": "contentDetails", "playlistId": playlist_id, "maxResults": 50}
             if token:
                 params["pageToken"] = token
             data = self._get("playlistItems", params)
-            ids += [it["contentDetails"]["videoId"] for it in data.get("items", []) if it.get("contentDetails")]
+            ids += [it["contentDetails"]["videoId"] for it in data.get("items", []) if it.get("contentDetails", {}).get("videoId")]
             token = data.get("nextPageToken")
             if not token:
                 break
@@ -214,6 +239,7 @@ def _video_info(item: dict) -> dict:
         "is_music": is_music,
         "title": sn.get("title", ""),
         "channel": sn.get("channelTitle", ""),
+        "channel_id": sn.get("channelId", ""),
         "description": sn.get("description", ""),
         "published_at": sn.get("publishedAt", ""),
         "thumbnail": thumb,
