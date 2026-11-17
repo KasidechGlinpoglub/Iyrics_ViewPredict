@@ -7,3 +7,6 @@ models/
 __pycache__/
 *.pyc
 .claude/
+
+# ไฟล์ทำงานของรอบทดลอง มีเนื้อร้องและข้อมูลดิบ
+/data/pilot_30.csv

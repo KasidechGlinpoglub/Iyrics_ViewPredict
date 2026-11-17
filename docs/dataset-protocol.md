@@ -14,7 +14,7 @@
 
 | ประเภทช่อง | รายชื่อ |
 |---|---|
-| ช่องค่าย | [GeneLab](https://www.youtube.com/@genelab), [SMALLROOM](https://www.youtube.com/@smallroommusic), [YUPP!](https://www.youtube.com/@yuppofficial) |
+| ช่องค่าย | [GeneLab](https://www.youtube.com/@genelab), [SMALLROOM](https://www.youtube.com/channel/UC1T-ZwcYVQB6EpqOQD10tmw), [YUPP!](https://www.youtube.com/@yuppofficial) |
 | ช่องศิลปิน | [TangBadVoice](https://www.youtube.com/@TangBadVoice), [Safeplanet](https://www.youtube.com/@safeplanetband), [TIMETHAI](https://www.youtube.com/@timethaiofficial) |
 
 ถ้ามี MV เข้าเกณฑ์น้อย ให้เพิ่มช่องโดยบันทึกชื่อและเหตุผลก่อนเปิดดูยอดวิวของช่องที่เพิ่ม เก็บรายการเพลงที่รอตรวจหรือหาเนื้อร้องไม่พบไว้ด้วย เพื่อให้ตรวจได้ว่าเพลงหลุดจากชุดข้อมูลในขั้นตอนไหน

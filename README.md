@@ -51,11 +51,13 @@ python app.py                      # เปิด http://127.0.0.1:5000
 
 สำหรับชุดข้อมูลของโปรเจกต์ ให้ใช้ [เกณฑ์คัดเพลงและนิยามยอดวิว](docs/dataset-protocol.md) เพื่อเลือก MV ทางการทุกอายุและเก็บยอดวิวสะสมในวันเดียวกัน
 
+[ผลรอบทดลอง 30 MV](docs/pilot-30.md) ระบุจำนวนเพลงที่หาเนื้อร้องได้และผลตรวจเทียบกับคำอธิบาย MV
+
 ตอนนี้แอปใช้ **ข้อมูลจำลอง** (`data/demo_songs.csv`: เนื้อเพลง ยอดวิว และศิลปินที่สร้างขึ้นเอง ไม่มีลิงก์จริง)
 
 1. ดึงรายการอัปโหลดและยอดวิวจากช่อง YouTube ที่เลือก (ต้องมี API key)
    ```bash
-   python scripts/collect_youtube.py channels "@genelab" "@smallroommusic" "@yuppofficial" "@TangBadVoice" "@safeplanetband" "@timethaiofficial" -o data/raw_songs.csv
+   python scripts/collect_youtube.py channels "@genelab" "UC1T-ZwcYVQB6EpqOQD10tmw" "@yuppofficial" "@TangBadVoice" "@safeplanetband" "@timethaiofficial" -o data/raw_songs.csv
    ```
    ระบุช่องด้วย `@handle`, channel ID หรือลิงก์ของช่องได้ คำสั่งอ่านรายการอัปโหลดทุกหน้าและรับคลิปทุกอายุ ใช้ `--limit 50` เมื่อต้องการดูเฉพาะ 50 คลิปแรกต่อช่อง
    รันซ้ำจะเพิ่มเฉพาะ `video_id` ใหม่และรักษาเนื้อร้องกับยอดวิวเดิมของแถวที่มีอยู่ คอลัมน์ `published_at` และ `views_collected_at` จาก API ระบุเวลาด้วย UTC ให้เทียบวันเก็บข้อมูลตามเวลาไทย
