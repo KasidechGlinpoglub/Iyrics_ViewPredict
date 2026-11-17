@@ -3,7 +3,8 @@
 1) ดึงรายการคลิปจากช่องหรือ playlist (ต้องมี YOUTUBE_API_KEY)
      python scripts/collect_youtube.py channels "@genelab" "@smallroommusic" -o data/raw_songs.csv
 
-2) ตรวจว่าเป็น MV ทางการ ยืนยันชื่อเพลง/ศิลปิน และกรอกเนื้อเพลงใน data/raw_songs.csv
+2) ตรวจว่าเป็น MV ทางการ ยืนยันชื่อเพลง/ศิลปิน แล้วค้นเนื้อร้องจาก LRCLIB
+     python scripts/collect_youtube.py lyrics data/raw_songs.csv
 
 3) เติม/อัปเดตยอดวิวล่าสุด แล้วบันทึกเป็นไฟล์สำหรับเทรน (ข้ามแถวที่ยังไม่มีเนื้อเพลง)
      python scripts/collect_youtube.py fill data/raw_songs.csv -o data/songs.csv
@@ -22,9 +23,11 @@ from pathlib import Path
 from tempfile import NamedTemporaryFile
 
 import pandas as pd
+import requests
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from core.config import load_env  # noqa: E402
+from core import lrclib  # noqa: E402
 from core.youtube import YouTubeClient, YouTubeError, extract_video_id  # noqa: E402
 
 COLUMNS = [
@@ -157,6 +160,49 @@ def cmd_channels(args) -> None:
     collect_videos(client, ids, args.output, args.overwrite)
 
 
+def cmd_lyrics(args) -> None:
+    df = pd.read_csv(args.input, encoding="utf-8-sig", dtype=str, keep_default_na=False)
+    df.columns = [col.strip().lower() for col in df.columns]
+    if not df.columns.is_unique:
+        sys.exit("ไฟล์ input มีชื่อคอลัมน์ซ้ำ")
+    if not {"title", "artist"} <= set(df.columns):
+        sys.exit("ไฟล์ input ต้องมีคอลัมน์ title และ artist")
+    for col in ("lyrics", "lyrics_source", "lyrics_status"):
+        if col not in df:
+            df[col] = ""
+
+    queries = 0
+    error = None
+    with requests.Session() as session:
+        for i, row in df.iterrows():
+            if row["lyrics"].strip():
+                df.at[i, "lyrics_status"] = "matched" if row["lyrics_status"] == "matched" else "existing"
+                continue
+            title, artist = row["title"].strip(), row["artist"].strip()
+            if not title or not artist:
+                df.at[i, "lyrics_status"] = "needs_review"
+                continue
+            if queries:
+                time.sleep(0.3)
+            queries += 1
+            try:
+                status, lyrics, source = lrclib.match_lyrics(title, artist, lrclib.search(session, title, artist))
+            except lrclib.LRCLIBError as exc:
+                df.at[i, "lyrics_status"] = "lookup_error"
+                error = exc
+                break
+            df.loc[i, ["lyrics_status", "lyrics", "lyrics_source"]] = [status, lyrics, source]
+
+    output = args.output or args.input
+    write_csv(df, output)
+    counts = df["lyrics_status"].replace("", "pending").value_counts()
+    print(f"ค้น LRCLIB {queries} เพลง -> {output}")
+    for status, count in counts.items():
+        print(f"  {status}: {count}")
+    if error:
+        sys.exit(f"บันทึกผลที่ทำได้แล้ว · {error}")
+
+
 def cmd_fill(args) -> None:
     df = pd.read_csv(args.input, encoding="utf-8-sig", dtype=str, keep_default_na=False)
     df.columns = [c.strip().lower() for c in df.columns]
@@ -211,6 +257,11 @@ def main() -> None:
     c.add_argument("--limit", type=int, help="จำนวนคลิปสูงสุดต่อช่อง (ค่าเริ่มต้นคือทั้งหมด)")
     c.add_argument("--overwrite", action="store_true", help="เขียนทับไฟล์เดิมแทนการรวม")
     c.set_defaults(func=cmd_channels)
+
+    l = sub.add_parser("lyrics", help="เติมเนื้อร้องจาก LRCLIB ด้วยชื่อเพลงและศิลปิน")
+    l.add_argument("input", type=Path)
+    l.add_argument("-o", "--output", type=Path, help="ไฟล์ผลลัพธ์ (ค่าเริ่มต้นคือไฟล์ input)")
+    l.set_defaults(func=cmd_lyrics)
 
     f = sub.add_parser("fill", help="เติมยอดวิวล่าสุดให้ไฟล์ที่มี url + lyrics")
     f.add_argument("input", type=Path)
