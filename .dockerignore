@@ -2,6 +2,12 @@
 .git
 .claude
 models/
+data/.local/
+data/songs.csv
+data/pilot_30.csv
+data/raw_songs.csv
+data/songs_with_lyrics.csv
+data/youtube_test.csv
 **/__pycache__/
 *.xlsx
 *.png

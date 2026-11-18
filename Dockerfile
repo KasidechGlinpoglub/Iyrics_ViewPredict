@@ -18,8 +18,8 @@ COPY --chown=user . .
 RUN chown user:user /app
 USER user
 
-# เทรนโมเดลตอน build: ใช้ data/songs.csv ถ้ามี ไม่งั้นใช้ข้อมูลจำลอง
-RUN python scripts/make_demo_data.py && python train.py
+# เทรนโมเดลเดโมจากข้อมูลจำลอง
+RUN python train.py --data data/demo_songs.csv
 
 EXPOSE 7860
 CMD ["sh", "-c", "exec gunicorn app:app --bind 0.0.0.0:${PORT} --workers 1 --threads 4 --timeout 120"]

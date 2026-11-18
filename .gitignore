@@ -10,6 +10,9 @@ __pycache__/
 
 # ไฟล์ทำงานของรอบทดลอง มีเนื้อร้องและข้อมูลดิบ
 /data/pilot_30.csv
+/data/raw_songs.csv
+/data/songs_with_lyrics.csv
+/data/youtube_test.csv
 
 # ชุดเทรนในเครื่องมีเนื้อร้องจากคำอธิบาย MV
 /data/songs.csv
