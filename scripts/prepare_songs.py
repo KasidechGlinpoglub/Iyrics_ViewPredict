@@ -142,33 +142,42 @@ def scan_uploads() -> list[dict]:
         return [item for items in pool.map(scan, CHANNELS) for item in items]
 
 
-def select_songs(items: list[dict]) -> tuple[list[dict], Counter]:
+def select_songs(items, *, sources=CHANNELS, audit=None) -> tuple[list[dict], Counter]:
     counts = Counter()
     candidates = []
     seen_ids = set()
+
+    def record(video_id, channel_id, reason):
+        if audit is not None:
+            audit.append(dict(video_id=video_id, channel_id=channel_id, reason=reason))
+
     for item in items:
         source = item["source"]
-        if source not in CHANNELS or item["id"] in seen_ids:
+        if source not in sources or item["id"] in seen_ids:
             continue
         seen_ids.add(item["id"])
         video = _video_info(item)
         title = normalize("NFKC", video["title"])
         description = video["description"]
+        def reject(reason):
+            counts[reason] += 1
+            record(video["video_id"], video["channel_id"], reason)
+
         duration = item["contentDetails"].get("duration", "")
         seconds = re.fullmatch(r"PT(?:(\d+)M)?(?:(\d+)S)?", duration)
         if not seconds or not 60 < int(seconds[1] or 0) * 60 + int(seconds[2] or 0) <= 720:
-            counts["duration_excluded"] += 1
+            reject("duration_excluded")
             continue
         if NON_MV.search(title) or not (MV_MARK.search(title) or VIDEO_CREDIT.search(description)):
-            counts["mv_excluded"] += 1
+            reject("mv_excluded")
             continue
         lyrics = extract_lyrics(description)
         if not lyrics:
-            counts["lyrics_excluded"] += 1
+            reject("lyrics_excluded")
             continue
         row = song_metadata(video, source)
         if not row["published_at"] or not row["artist"] or row["title"] == row["video_title"]:
-            counts["metadata_excluded"] += 1
+            reject("metadata_excluded")
             continue
         row.update(lyrics=lyrics, lyrics_source=row["url"], lyrics_status="official_description")
         candidates.append(row)
@@ -183,10 +192,12 @@ def select_songs(items: list[dict]) -> tuple[list[dict], Counter]:
         grams = {lyrics[i:i + 5] for i in range(len(lyrics) - 4)}
         if song_key in titles or any(len(grams & other) / len(grams | other) >= 0.9 for other in fingerprints):
             counts["duplicate_song"] += 1
+            record(row["video_id"], row["channel_id"], "duplicate_song")
             continue
         titles.add(song_key)
         fingerprints.append(grams)
         accepted.append(row)
+        record(row["video_id"], row["channel_id"], "candidate")
     return accepted, counts
 
 
