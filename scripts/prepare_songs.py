@@ -190,7 +190,11 @@ def select_songs(items, *, sources=CHANNELS, audit=None) -> tuple[list[dict], Co
         song_key = (key(title), key(FEATURE.sub("", row["artist"])))
         lyrics = key(row["lyrics"])
         grams = {lyrics[i:i + 5] for i in range(len(lyrics) - 4)}
-        if song_key in titles or any(len(grams & other) / len(grams | other) >= 0.9 for other in fingerprints):
+        if song_key in titles or any(
+            min(len(grams), len(other)) >= 0.9 * max(len(grams), len(other))
+            and (overlap := len(grams & other)) >= 0.9 * (len(grams) + len(other) - overlap)
+            for other in fingerprints
+        ):
             counts["duplicate_song"] += 1
             record(row["video_id"], row["channel_id"], "duplicate_song")
             continue

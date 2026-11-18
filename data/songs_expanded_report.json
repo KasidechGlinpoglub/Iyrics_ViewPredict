@@ -1,0 +1,122 @@
+{
+  "dataset_sha256": "0da62f3fe1b6edcf45b0472dfb6affe7f91121444231ae4b7cc1f6102b4b5596",
+  "split_sha256": "d11fe8548df7c7bbacf3e901a954fc8ce49eb7835371630380454cca7473c05d",
+  "class_names": [
+    "หลักหมื่น",
+    "หลักแสน",
+    "หลักล้าน"
+  ],
+  "n_test": 264,
+  "test_groups": 88,
+  "majority": {
+    "class": "หลักล้าน",
+    "correct": 111,
+    "accuracy": 0.42045454545454547,
+    "macro_f1": 0.19733333333333333,
+    "confusion_matrix": [
+      [
+        0,
+        0,
+        55
+      ],
+      [
+        0,
+        0,
+        98
+      ],
+      [
+        0,
+        0,
+        111
+      ]
+    ]
+  },
+  "original": {
+    "n_songs": 975,
+    "n_train": 711,
+    "n_test": 264,
+    "best_params": {
+      "nb__alpha": 0.05,
+      "tfidf__use_idf": false,
+      "vect__min_df": 2
+    },
+    "cv_f1_macro": 0.3367,
+    "test_accuracy": 0.3598,
+    "test_f1_macro": 0.2391,
+    "baseline_accuracy": 0.4205,
+    "test_mae_log10": 0.9411,
+    "confusion_matrix": [
+      [
+        0,
+        11,
+        44
+      ],
+      [
+        0,
+        18,
+        80
+      ],
+      [
+        0,
+        34,
+        77
+      ]
+    ],
+    "split_method": "locked_artist_groups",
+    "baseline_class": "หลักล้าน",
+    "test_correct": 95,
+    "baseline_correct": 111,
+    "vocab_size": 3222
+  },
+  "expanded": {
+    "n_songs": 1306,
+    "n_train": 1042,
+    "n_test": 264,
+    "best_params": {
+      "nb__alpha": 0.1,
+      "tfidf__use_idf": false,
+      "vect__min_df": 2
+    },
+    "cv_f1_macro": 0.3246,
+    "test_accuracy": 0.3598,
+    "test_f1_macro": 0.2346,
+    "baseline_accuracy": 0.4205,
+    "test_mae_log10": 0.9343,
+    "confusion_matrix": [
+      [
+        0,
+        10,
+        45
+      ],
+      [
+        3,
+        15,
+        80
+      ],
+      [
+        2,
+        29,
+        80
+      ]
+    ],
+    "split_method": "locked_artist_groups",
+    "baseline_class": "หลักล้าน",
+    "test_correct": 95,
+    "baseline_correct": 111,
+    "vocab_size": 4396
+  },
+  "correct_gain": 0,
+  "artists_outside_prior_manifests": {
+    "n_test": 123,
+    "groups": 41,
+    "manifest_hashes": [
+      "e1b8747c43be95668ce8748e2a4d3487e0f4afe741e6d709a68c58f986eae8f1",
+      "70b150249218db6364c6af4e41b8a09f1e26690ec89063406f053f3839244ce0"
+    ],
+    "correct": {
+      "original": 41,
+      "expanded": 41,
+      "majority": 51
+    }
+  }
+}

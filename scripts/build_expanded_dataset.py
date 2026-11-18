@@ -14,10 +14,14 @@ from core.youtube import YouTubeError
 from scripts.collect_expanded_candidates import write_rows
 from scripts.collect_youtube import get_client
 from scripts.prepare_songs import key
+from scripts.review_training_snapshot import clean_lyrics
 from scripts.validate_expanded_dataset import MIN_ARTISTS, MIN_CHANNELS, read_csv, roster_summary, snapshot_summary
 
 COLLAB = re.compile(r"\s+(?:feat(?:uring)?\.?|ft\.?|x|with|vs\.?|[&×+])\s+", re.I)
 REPLY_ARTISTS = ("ดิดคิตตี้", "แสงดาวptmusic")
+NON_ORIGINAL_CHANNELS = {"เพลงฮิตขึ้นหิ้ง"}
+SECONDARY_VERSION = re.compile(
+    r"\b(?:vocals?[- ]only|sweet version|alternate|remastered|live session|artist version)\b", re.I)
 
 
 def credits(row):
@@ -43,23 +47,29 @@ def select(base, sources):
         for row in sorted(read_csv(path), key=lambda row: (row["published_at"], row["video_id"])):
             primary = row.get("primary_artist") or COLLAB.split(row.get("artist", ""))[0].strip()
             normalized = key(primary)
-            artist = known.get(normalized, normalized)
-            title, text = key(row["title"]), key(row["lyrics"])
+            canonical = re.sub(r"(?:อาร์สยาม|ไหทองคํา)$", "", normalized)
+            artist = known.get(normalized, known.get(canonical, canonical))
+            if (row["channel"].strip() in NON_ORIGINAL_CHANNELS or "[ai artist]" in primary.casefold()
+                    or SECONDARY_VERSION.search(row.get("video_title", row["title"]))):
+                continue
+            row = dict(row, artist=row.get("artist") or primary, primary_artist=primary)
+            cleaned, _ = clean_lyrics(row["lyrics"], row)
+            title, text = key(row["title"]), key(cleaned)
             if (not artist or not title or not text or row["video_id"] in ids or (artist, title) in titles
-                    or text in lyrics or not row.get("lyrics_source")):
+                    or text in lyrics or not row.get("lyrics_source") or len(cleaned.splitlines()) < 8):
                 continue
             grams = shingles(text)
             if not grams:
                 continue
             if any(min(len(grams), len(other)) >= 0.9 * max(len(grams), len(other))
-                   and len(grams & other) >= 0.9 * len(grams | other) for other in fingerprints):
+                   and (overlap := len(grams & other)) >= 0.9 * (len(grams) + len(other) - overlap)
+                   for other in fingerprints):
                 continue
             ids.add(row["video_id"])
             titles.add((artist, title))
             lyrics.add(text)
             fingerprints.append(grams)
-            options[artist].append(dict(row, artist=row.get("artist") or primary, artist_key=artist,
-                                        primary_artist=primary, origin="added"))
+            options[artist].append(dict(row, artist_key=artist, lyrics=cleaned, origin="added"))
     eligible = {a: tracks for a, tracks in options.items() if len(tracks) >= 3 and a not in artists}
     print(f"{len(eligible)} new artist keys with at least three candidate songs; "
           f"{len({r['channel_id'] for group in eligible.values() for r in group} - channels)} potentially new channels",
