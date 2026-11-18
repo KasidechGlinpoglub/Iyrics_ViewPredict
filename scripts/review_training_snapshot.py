@@ -38,6 +38,92 @@ REPAIRS = {
     "Xz7z_pfCsJA": (18, 213, "747102279cc5ccf48dc74b31f0788baa70d09cbf8274f32dd5d66807cdbdd133"),
 }
 
+# Second review, on the output of clean_lyrics. Lines are one-based and refer
+# to the reviewed text. A batch fingerprint prevents applying these edits to
+# lyrics whose positions changed.
+FOLLOWUP_REMOVALS = {
+    "2wALaAAvbAU": (1, 24),
+    "ztuZhwUM2JU": (21, 24),
+    "PgqUOMmDN6M": (25,),
+    "K0pnO4hl_bg": (52,),
+    "ulxiiITb9Ps": (24,),
+    "TXJc-vG5IWs": (1, 2, 7, 12, 20, 29, 34, 49),
+    "SvD-1R1YHDs": (42,),
+    "GYYv_T345Fs": (30, 31, 32),
+    "grrF03UISJ0": (36, 37, 38),
+    "23cipSExADA": (25, 26, 27, 28),
+    "u7PjHHvAbxk": (37, 38, 39, 40),
+    "NoB4HQEvg-U": (57, 58, 59),
+    "0_FWOBas1AA": (18,),
+    "lV1lK-53faA": (47,),
+    "PSrsIpBAbd0": (53,),
+    "cA3js9aeXhY": (41,),
+    "8K-gpkYlEQ8": (32, 33, 34, 35, 36, 37),
+    "-_jv6rU2oEo": (48, 49, 50, 51, 52, 53),
+    "jxRcPqAz5sg": (16, 17),
+    "LYrDWUJUgso": (26, 27, 28),
+    "JCV8G4-XzYU": (23,),
+    "eVPN1gQNjOE": (25,),
+    "ZhAdgs5q1iU": (35,),
+    "wue-yq7Es00": (55,),
+    "-hkU0l8F4eY": (27,),
+    "WrEHw6p2Pow": (18, 19),
+    "bIQqIfclk-I": (33,),
+    "hVrPYNzsJgE": (34,),
+    "QHKdc46FS10": (20,),
+    "7k2y5o_l8xM": (18,),
+    "t9-Oiem3gSs": (18,),
+    "1SqJeSiSHFg": (12, 13, 14),
+    "U-JVO7vlAKo": (35,),
+    "XOPfwCF0bZc": (46,),
+    "DJLIB8LU4-Y": (56,),
+    "QhLe7ERbOdc": (1, 2, 3, 4, 7, 12, 18, 24, 29, 38, 47, 58),
+    "8NmY9xJv-dI": (8,),
+    "bk8RwaUDhwk": (53, 54),
+    "FMuIkvsIjL0": (22,),
+    "89ahmLZMHBs": (20,),
+    "bbk39_pQ4QE": (29,),
+    "EUwgeGwEBAs": (15,),
+    "qv700s1FxT4": (1, 4, 15, 24, 29, 36, 39, 48, 53, 61, 74, 84),
+    "SpPd6tikhTM": (1, 8, 13, 26, 33, 42, 49, 58),
+    "kPJZ0UihBfk": (1, 19, 30, 48, 61, 69, 84, 94, 107, 115),
+    "hTrQhBgv-BQ": (27,),
+    "-YByeE5aVc0": (11,),
+    "-Plkae_yezo": (15, 42),
+    "9poawaY-BqA": (9,),
+    "bOuhAb7Z6KE": (25, 34, 35, 36, 46, 55),
+    "x68v41VFpIQ": (13,),
+    "D-AZcyo4mGU": (12,),
+    "t-eSBxPmvQU": (9,),
+    "kSmvEavVzP8": (31,),
+    "7F3tT873lpE": (1, 2),
+    "9AhoeHSEjMg": (19,),
+    "haPIBIR5318": (5,),
+    "mJklazD2hqU": (5, 20, 36),
+}
+
+# Each pattern removes only the reviewed label or repeat marker on these lines.
+FOLLOWUP_TRIMS = {
+    "TXJc-vG5IWs": ((42, 45), r"^\([^)]*\)\s*"),
+    "qv700s1FxT4": ((12, 13, 66, 67, 68, 69, 70, 71, 72, 73, 83), r"^\([^)]*\)\s*"),
+    "SpPd6tikhTM": ((65, 66, 67, 68, 69, 70, 71, 72), r"^\([^)]*\)\s*"),
+    "WrEHw6p2Pow": ((1, 9, 12), r"^[ABH]\.\s*"),
+    "JFlw6_E5KlY": ((14,), r"\s+x2$"),
+    "l9yYVgM75Ak": ((7, 19), r"^\(X2\)\s*"),
+    "TXD9-vdy97M": ((18, 21, 29), r"^ซ้ำ\*+\s*"),
+    "x68v41VFpIQ": ((1, 5, 7), r"^(?:[AB]|HOOK)\s+"),
+    "t-eSBxPmvQU": ((14, 31), r"\s+x8$"),
+    "dsd7_u0KZb4": ((12, 16), r"^Hook\*+\s*|\s*\(ท่อนจบ\)$"),
+    "kYrVSeqfKP4": ((13,), r"^,\*\*\s*"),
+    "7F3tT873lpE": ((35, 39), r"^ซ้ำ[…\.]+\s*"),
+    "d5RLKAZ_mLE": ((41,), r"\s+x2$"),
+    "LkHCjFnFKGQ": ((43,), r"\s+x2\)$"),
+    "2RnBobfVdsM": ((9,), r"^,\*\*\s*"),
+}
+FOLLOWUP_FINGERPRINT = "d7e00afa0f176a36526d77782750f640ffed368f9fcea14128749f18c4d9aeef"
+YELLOW_LINE = "Xz7z_pfCsJA"
+YELLOW_LINE_COMPOUNDS = ("วรรณ ศิลป์", "หนัง สือ", "ฝ่า มือ", "โดด เดี่ยว")
+
 CREDIT = re.compile(
     r"^(?:(?:เครดิต(?:เพลง|ดนตรี)?|music video|mv (?:crew|credits?)|credits?)\s*[:：]?\s*$"
     r"|(?:เนื้อเพลง|เนื้อร้อง|เพลง|ชื่อเพลง|title|song|album|อัลบั้ม|ศิลปิน|artist|คำร้อง|ทำนอง|"
@@ -160,6 +246,34 @@ def repair(row: dict, source: dict) -> None:
     row.update(lyrics=text, lyrics_source=row["url"], lyrics_status="official_description")
 
 
+def apply_followup(rows: list[dict], audit: list[dict]) -> None:
+    targets = FOLLOWUP_REMOVALS.keys() | FOLLOWUP_TRIMS.keys() | {YELLOW_LINE}
+    by_id = {row["video_id"]: row for row in rows}
+    reviewed = {video_id: by_id[video_id]["lyrics"] for video_id in sorted(targets)}
+    fingerprint = hashlib.sha256(json.dumps(reviewed, ensure_ascii=False).encode()).hexdigest()
+    if fingerprint != FOLLOWUP_FINGERPRINT:
+        raise ValueError("The lyrics differ from the text used to review the follow-up line edits")
+    for video_id, text in reviewed.items():
+        lines = text.splitlines()
+        drops = FOLLOWUP_REMOVALS.get(video_id, ())
+        trim_lines, pattern = FOLLOWUP_TRIMS.get(video_id, ((), ""))
+        for number in trim_lines:
+            line, count = re.subn(pattern, "", lines[number - 1])
+            if count != 1 or not line.strip():
+                raise ValueError(f"Unexpected label on line {number} of {video_id}")
+            lines[number - 1] = line
+        result = "\n".join(line for number, line in enumerate(lines, 1) if number not in drops)
+        detail = {"removed_lines": list(drops), "trimmed_labels_at_lines": list(trim_lines)}
+        if video_id == YELLOW_LINE:
+            detail["joined_word_boundaries"] = sum(result.count(word) for word in YELLOW_LINE_COMPOUNDS)
+            for word in YELLOW_LINE_COMPOUNDS:
+                result = result.replace(word, word.replace(" ", ""))
+        if result == text or not result.strip():
+            raise ValueError(f"Invalid follow-up edit for {video_id}")
+        by_id[video_id]["lyrics"] = result
+        audit.append({"video_id": video_id, "action": "lyrics_followup", "detail": json.dumps(detail)})
+
+
 def review(input_dir: Path, sources: Path, output: Path) -> None:
     song_fields, songs = read_csv(input_dir / "songs.csv")
     manifest_fields, manifest = read_csv(input_dir / "songs_manifest.csv")
@@ -205,6 +319,8 @@ def review(input_dir: Path, sources: Path, output: Path) -> None:
             raise ValueError(f"No lyrics left for {video_id}")
         artist_views[row["artist_key"]].append(int(row["views"]))
         cleaned.append(row)
+
+    apply_followup(cleaned, audit)
 
     if len(artist_views) < 150 or any(not 3 <= len(views) <= 5 for views in artist_views.values()):
         raise ValueError("Expected at least 150 artists with 3–5 songs each")
