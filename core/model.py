@@ -25,6 +25,7 @@ from sklearn.naive_bayes import MultinomialNB
 from sklearn.pipeline import Pipeline
 
 from .text import identity, split_lines, tokenize
+from .view_bands import VIEW_CUTOFFS, VIEW_NAMES
 
 CLASS_NAMES = {
     2: ["ต่ำ", "สูง"],
@@ -34,8 +35,8 @@ CLASS_NAMES = {
 }
 MAX_LINES = 300
 # ระดับยอดวิวแบบคงที่ (log10): < 1 แสน, 1 แสน – 1 ล้าน, ≥ 1 ล้าน
-FIXED_EDGES = [5.0, 6.0]
-FIXED_NAMES = ["หลักหมื่น", "หลักแสน", "หลักล้าน"]
+FIXED_EDGES = np.log10(VIEW_CUTOFFS).tolist()
+FIXED_NAMES = list(VIEW_NAMES)
 # การรวมผลโมเดลกับยอดวิวจริงบน YouTube (LyricsModel.combine)
 MODEL_WEIGHT = 0.3        # น้ำหนักโมเดลเมื่อรู้จักคำในเนื้อเพลงเพียงพอ (เทียบเท่าเพลงที่คล้าย 30%)
 MODEL_WEIGHT_MIN = 0.02
