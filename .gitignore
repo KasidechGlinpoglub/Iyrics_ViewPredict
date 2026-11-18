@@ -13,3 +13,4 @@ __pycache__/
 
 # ชุดเทรนในเครื่องมีเนื้อร้องจากคำอธิบาย MV
 /data/songs.csv
+/data/.local/
