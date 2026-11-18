@@ -20,7 +20,7 @@ import pandas as pd
 from sklearn.feature_extraction.text import CountVectorizer, TfidfTransformer, TfidfVectorizer
 from sklearn.metrics import accuracy_score, confusion_matrix, f1_score
 from sklearn.metrics.pairwise import linear_kernel
-from sklearn.model_selection import GridSearchCV, StratifiedKFold, train_test_split
+from sklearn.model_selection import GridSearchCV, StratifiedGroupKFold, StratifiedKFold, train_test_split
 from sklearn.naive_bayes import MultinomialNB
 from sklearn.pipeline import Pipeline
 
@@ -56,7 +56,7 @@ def format_views(n: float) -> str:
     return f"{int(round(n)):,}"
 
 
-def load_dataset(path: str | Path) -> pd.DataFrame:
+def load_dataset(path: str | Path, *, split_path: Path | None = None) -> pd.DataFrame:
     """อ่าน CSV (title, artist, lyrics, views, url) และทำความสะอาดข้อมูล"""
     df = pd.read_csv(path, encoding="utf-8-sig")
     df.columns = [c.strip().lower() for c in df.columns]
@@ -72,7 +72,24 @@ def load_dataset(path: str | Path) -> pd.DataFrame:
     for col in ("title", "artist", "url"):
         df[col] = df[col].fillna("").astype(str).str.strip()
     df["lyrics"] = df["lyrics"].astype(str)
-    df = df.drop_duplicates(subset=["title", "artist"]).reset_index(drop=True)
+    if split_path is None:
+        return df.drop_duplicates(subset=["title", "artist"]).reset_index(drop=True)
+    split = pd.read_csv(split_path, encoding="utf-8-sig", dtype=str, keep_default_na=False)
+    required = {"video_id", "split", "split_group"}
+    if set(split.columns) != required or "video_id" not in df:
+        raise ValueError("ไฟล์แบ่งชุดต้องมี video_id, split_group และ split ส่วนไฟล์เพลงต้องมี video_id")
+    if (split["video_id"].duplicated().any() or df["video_id"].duplicated().any()
+            or df["video_id"].isna().any() or split["video_id"].str.strip().eq("").any()
+            or set(split["video_id"]) != set(df["video_id"])):
+        raise ValueError("video_id ในไฟล์เพลงและไฟล์แบ่งชุดขาดหาย ซ้ำ หรือไม่ตรงกัน")
+    if set(split["split"]) != {"train", "test"} or split["split_group"].str.strip().eq("").any():
+        raise ValueError("ต้องมีทั้ง train และ test และทุกเพลงต้องมี split_group")
+    if split.groupby("split_group")["split"].nunique().gt(1).any():
+        raise ValueError("พบ split_group ข้ามฝั่งฝึกและทดสอบ")
+    df = df.drop(columns=["split", "split_group"], errors="ignore").merge(split, on="video_id", validate="one_to_one")
+    if "artist_key" in df and (df["artist_key"].isna().any()
+                              or df.groupby("artist_key")["split"].nunique().gt(1).any()):
+        raise ValueError("พบศิลปินข้ามฝั่งฝึกและทดสอบ หรือ artist_key ขาดหาย")
     return df
 
 
@@ -104,10 +121,13 @@ def _class_centers(log_views: np.ndarray, y: np.ndarray, n_classes: int) -> list
 
 
 # ---------------------------------------------------------------- training
-def train(df: pd.DataFrame, levels: str = "fixed", n_classes: int = 4, seed: int = 42, is_demo: bool = False) -> dict:
+def train(df: pd.DataFrame, levels: str = "fixed", n_classes: int = 4, seed: int = 42,
+          is_demo: bool = False, *, locked: bool = False) -> dict:
     """levels="fixed": ระดับคงที่ หลักหมื่น / หลักแสน / หลักล้าน (เข้าใจง่าย เทียบกับยอดวิวจริงได้ตรง ๆ)
     levels="quantile": แบ่งตาม quantile ของข้อมูล ให้แต่ละระดับมีจำนวนเพลงเท่ากัน (n_classes ระดับ)"""
     log_views = np.log10(df["views"].to_numpy(dtype=float))
+    if locked and levels != "fixed":
+        raise ValueError("โหมดแบ่งชุดที่ล็อกไว้ใช้สามคลาสแบบ fixed")
     if levels == "fixed":
         edges = np.array(FIXED_EDGES)
         names = FIXED_NAMES
@@ -128,7 +148,20 @@ def train(df: pd.DataFrame, levels: str = "fixed", n_classes: int = 4, seed: int
     tokens = [tokenize(t) for t in df["lyrics"]]
 
     idx = np.arange(len(df))
-    tr, te = train_test_split(idx, test_size=0.2, stratify=y, random_state=seed)
+    if locked:
+        tr = idx[df["split"].eq("train")]
+        te = idx[df["split"].eq("test")]
+        expected = set(range(n_classes))
+        if set(y[tr]) != expected or set(y[te]) != expected:
+            raise ValueError("ชุดฝึกและทดสอบต้องมีทั้งสามคลาส")
+        groups = df["split_group"].to_numpy()[tr]
+        splitter = StratifiedGroupKFold(n_splits=5, shuffle=True, random_state=seed)
+        cv = list(splitter.split(tr, y[tr], groups))
+        if any(set(y[tr][fit]) != expected for fit, _ in cv):
+            raise ValueError("บาง fold ฝึกมีไม่ครบสามคลาส โปรดตรวจจำนวนกลุ่มต่อคลาส")
+    else:
+        tr, te = train_test_split(idx, test_size=0.2, stratify=y, random_state=seed)
+        cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=seed)
     docs_tr = [tokens[i] for i in tr]
     docs_te = [tokens[i] for i in te]
 
@@ -139,7 +172,7 @@ def train(df: pd.DataFrame, levels: str = "fixed", n_classes: int = 4, seed: int
             "tfidf__use_idf": [True, False],
             "nb__alpha": [0.05, 0.1, 0.3, 0.5, 1.0],
         },
-        cv=StratifiedKFold(n_splits=5, shuffle=True, random_state=seed),
+        cv=cv,
         scoring="f1_macro",
         n_jobs=1,
     )
@@ -163,18 +196,24 @@ def train(df: pd.DataFrame, levels: str = "fixed", n_classes: int = 4, seed: int
         "test_mae_log10": round(float(np.mean(np.abs(est_log_te - log_views[te]))), 4),
         "confusion_matrix": confusion_matrix(y[te], pred_te, labels=list(range(n_classes))).tolist(),
     }
+    if locked:
+        report.update(split_method="locked_artist_groups", baseline_class=names[majority],
+                      test_correct=int(np.count_nonzero(y[te] == pred_te)),
+                      baseline_correct=int(np.count_nonzero(y[te] == majority)))
 
-    # ---- โมเดลจริงสำหรับใช้งาน: เทรนด้วยข้อมูลทั้งหมดด้วยพารามิเตอร์ที่ดีที่สุด
+    # Locked experiments ship the evaluated training-only model and similarity index.
+    fit_rows = tr if locked else idx
+    fit_tokens = [tokens[i] for i in fit_rows]
     final = _make_pipeline().set_params(**grid.best_params_)
-    final.fit(tokens, y)
+    final.fit(fit_tokens, y[fit_rows])
     report["vocab_size"] = int(len(final.named_steps["vect"].vocabulary_))
 
     sim_vectorizer = TfidfVectorizer(analyzer=identity, sublinear_tf=True)
-    sim_matrix = sim_vectorizer.fit_transform(tokens)
+    sim_matrix = sim_vectorizer.fit_transform(fit_tokens)
 
-    songs = df[["title", "artist", "views", "url", "lyrics"]].copy()
+    songs = df.iloc[fit_rows][["title", "artist", "views", "url", "lyrics"]].copy()
     songs["views"] = songs["views"].astype(np.int64)
-    songs["level"] = y
+    songs["level"] = y[fit_rows]
 
     return {
         "pipeline": final,
@@ -182,11 +221,11 @@ def train(df: pd.DataFrame, levels: str = "fixed", n_classes: int = 4, seed: int
         "sim_matrix": sim_matrix,
         "songs": songs.to_dict("records"),
         "edges": edges.tolist(),
-        "centers": _class_centers(log_views, y, n_classes),
+        "centers": _class_centers(log_views[fit_rows], y[fit_rows], n_classes),
         "class_names": names,
         "class_ranges": _class_ranges(edges.tolist(), n_classes),
         "levels": levels,
-        "class_counts": np.bincount(y, minlength=n_classes).tolist(),
+        "class_counts": np.bincount(y[fit_rows], minlength=n_classes).tolist(),
         "report": report,
         "is_demo": is_demo,
     }

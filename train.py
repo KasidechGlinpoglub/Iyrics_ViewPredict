@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from hashlib import sha256
 from pathlib import Path
 
 from core.model import LyricsModel, load_dataset, train
@@ -28,6 +29,7 @@ def main() -> None:
                     help="fixed = หลักหมื่น/หลักแสน/หลักล้าน (ค่าเริ่มต้น), quantile = แบ่งให้แต่ละระดับมีจำนวนเพลงเท่ากัน")
     ap.add_argument("--classes", type=int, default=4, help="จำนวนระดับเมื่อใช้ --levels quantile (2-5)")
     ap.add_argument("--out", type=Path, default=MODEL_PATH)
+    ap.add_argument("--split", type=Path, help="ไฟล์แบ่งชุดจริงที่ล็อกตาม video_id และกลุ่มศิลปิน")
     args = ap.parse_args()
 
     data_path = args.data or (REAL_DATA if REAL_DATA.exists() else DEMO_DATA)
@@ -35,10 +37,15 @@ def main() -> None:
         sys.exit(f"ไม่พบไฟล์ข้อมูล {data_path}\nสร้างข้อมูลจำลองก่อนด้วย: python scripts/make_demo_data.py")
     is_demo = data_path.resolve() == DEMO_DATA.resolve()
 
-    df = load_dataset(data_path)
-    print(f"ข้อมูล: {data_path.name} — {len(df)} เพลง{' (ข้อมูลจำลอง)' if is_demo else ''}")
-    print("กำลังตัดคำและเทรนโมเดล (GridSearchCV 5-fold)...")
-    bundle = train(df, levels=args.levels, n_classes=args.classes, is_demo=is_demo)
+    try:
+        df = load_dataset(data_path, split_path=args.split)
+        print(f"ข้อมูล: {data_path.name} — {len(df)} เพลง{' (ข้อมูลจำลอง)' if is_demo else ''}")
+        print("กำลังตัดคำและเทรนโมเดล (GridSearchCV 5-fold)...")
+        bundle = train(df, levels=args.levels, n_classes=args.classes, is_demo=is_demo, locked=bool(args.split))
+        if args.split:
+            bundle["report"]["split_sha256"] = sha256(args.split.read_bytes()).hexdigest()
+    except (OSError, ValueError) as error:
+        sys.exit(str(error))
     model = LyricsModel(bundle)
     model.save(args.out)
 
