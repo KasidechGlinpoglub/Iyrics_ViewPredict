@@ -10,19 +10,23 @@ from sklearn.model_selection import StratifiedGroupKFold
 
 DATA = Path(__file__).resolve().parents[1] / "data"
 SEED = 42
-BANDS = ("under_100k", "100k_to_under_1m", "1m_or_more")
+CLASSES = ("ไม่ดัง", "เฉย ๆ", "ดัง", "ดังมาก")
 GROUP_ALIASES = {"แสงดาวptmusic": "ดิดคิตตี้"}
+
+
+def model_class(song_view_tier: str) -> str:
+    return "ดังมาก" if song_view_tier == "Fucking Viral" else song_view_tier
 
 
 def split_snapshot(manifest: list[dict[str, str]]) -> list[dict[str, str]]:
     songs = sorted(manifest, key=lambda row: row["video_id"])
     ids = [row["video_id"] for row in songs]
     artists = [row["artist_key"] for row in songs]
-    labels = [row["view_band"] for row in songs]
+    labels = [model_class(row["song_view_tier"]) for row in songs]
     if len(ids) != len(set(ids)) or "" in ids or "" in artists:
         raise ValueError("The manifest must have unique video IDs and nonempty artist keys")
-    if set(labels) != set(BANDS):
-        raise ValueError("The manifest must contain all three view bands")
+    if set(labels) != set(CLASSES):
+        raise ValueError("The manifest must contain all four model classes")
 
     groups = [GROUP_ALIASES.get(artist, artist) for artist in artists]
     folds = StratifiedGroupKFold(n_splits=5, shuffle=True, random_state=SEED)
@@ -30,8 +34,8 @@ def split_snapshot(manifest: list[dict[str, str]]) -> list[dict[str, str]]:
     if {groups[i] for i in train_indices} & {groups[i] for i in test_indices}:
         raise ValueError("A split group crosses the train/test boundary")
     for indices in (train_indices, test_indices):
-        if {labels[i] for i in indices} != set(BANDS):
-            raise ValueError("A partition is missing a view band")
+        if {labels[i] for i in indices} != set(CLASSES):
+            raise ValueError("A partition is missing a model class")
 
     test = set(test_indices)
     return [
@@ -52,14 +56,14 @@ def main() -> None:
         writer.writeheader()
         writer.writerows(assignment)
 
-    labels = {row["video_id"]: row["view_band"] for row in manifest}
+    labels = {row["video_id"]: model_class(row["song_view_tier"]) for row in manifest}
     for split in ("train", "test"):
         rows = [row for row in assignment if row["split"] == split]
         counts = Counter(labels[row["video_id"]] for row in rows)
         print(f"{split}: {len(rows)} songs, {len({row['split_group'] for row in rows})} groups")
-        for band in BANDS:
-            groups = {row["split_group"] for row in rows if labels[row["video_id"]] == band}
-            print(f"  {band}: {counts[band]} songs from {len(groups)} groups")
+        for label in CLASSES:
+            groups = {row["split_group"] for row in rows if labels[row["video_id"]] == label}
+            print(f"  {label}: {counts[label]} songs from {len(groups)} groups")
 
 
 if __name__ == "__main__":
