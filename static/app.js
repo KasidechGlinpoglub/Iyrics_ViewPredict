@@ -9,10 +9,10 @@ const RAMP = [
 const DARK_TEXT_FROM = 7; // ช่องสีส้ม-เหลืองใช้ตัวอักษรสีเข้ม
 const FONT = '"IBM Plex Sans Thai", "Leelawadee UI", Tahoma, sans-serif';
 const DISPLAY = '"Kanit", "IBM Plex Sans Thai", "Leelawadee UI", Tahoma, sans-serif';
-const THEME = { bg: "#140a2e", panel: "#1b0c3f", ink: "#f7f1ff", ink2: "#cdbdf3", muted: "#9483c4", gold: "#f5c542", yellow: "#ffe680", line: "#3a2470", nullCell: "#251447" };
+const THEME = { bg: "#171020", panel: "#1e1529", ink: "#f6eff3", ink2: "#baaec3", muted: "#a296ac", gold: "#e8c586", yellow: "#f5dba5", line: "#3b2d46", nullCell: "#251c2e" };
 
 const $ = (id) => document.getElementById(id);
-const state = { result: null, lyrics: "", view: "words", info: null, youtube: null, src: "youtube" };
+const state = { result: null, lyrics: "", view: "words", info: null, youtube: null, prediction: 0, search: 0 };
 const ytEnabled = () => Boolean(state.info?.youtube?.enabled);
 
 /** สีของช่อง heatmap ตามค่า 0–1 */
@@ -23,6 +23,8 @@ function cellColor(v) {
 
 const pct = (v) => `${(v * 100).toFixed(1)}%`;
 const fmtInt = (n) => Math.round(n).toLocaleString("th-TH");
+const viewRange = (range) => range.replace(/^<\s*/, "ต่ำกว่า ")
+  .replace(/^≥\s*/, "ตั้งแต่ ").replace(/\s+–\s+/, " ถึงต่ำกว่า ");
 const esc = (s) =>
   String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 
@@ -54,14 +56,22 @@ function showError(msg) {
 }
 
 async function predict() {
-  const lyrics = $("lyrics").value.trim();
-  if (!lyrics) { showError("กรุณาใส่เนื้อเพลงก่อน"); $("lyrics").focus(); return; }
-  showError("");
   const btn = $("btnPredict");
+  if (btn.disabled) return;
+  const lyrics = $("lyrics").value.trim();
+  if (!lyrics) {
+    showError("กรุณาใส่เนื้อเพลงก่อน");
+    $("lyrics").focus();
+    return;
+  }
+  showError("");
+  const prediction = ++state.prediction;
   btn.disabled = true;
   btn.textContent = "กำลังวิเคราะห์…";
+  $("predictionStatus").setAttribute("aria-busy", "true");
   try {
     const result = await (await api("/api/predict", { lyrics })).json();
+    if (prediction !== state.prediction) return;
     state.result = result;
     state.lyrics = lyrics;
     state.youtube = null;
@@ -75,80 +85,69 @@ async function predict() {
       renderYoutubeDisabled();
     }
   } catch (e) {
-    showError(e.message);
+    if (prediction === state.prediction) showError(e.message);
   } finally {
-    btn.disabled = false;
-    btn.textContent = "ทำนายยอดวิว";
+    if (prediction === state.prediction) finishPrediction();
   }
 }
 
+function finishPrediction() {
+  $("btnPredict").disabled = false;
+  $("btnPredict").innerHTML = 'ทำนายยอดวิว <span aria-hidden="true">↗</span>';
+  $("predictionStatus").removeAttribute("aria-busy");
+}
+
 async function loadExample() {
+  const btn = $("btnExample");
+  const prediction = state.prediction;
+  const input = $("lyrics").value;
+  btn.disabled = true;
   try {
     const ex = await (await api("/api/example")).json();
+    if (prediction !== state.prediction || input !== $("lyrics").value) return;
     $("lyrics").value = ex.lyrics;
     updateCounter();
     showError("");
     predict();
   } catch (e) {
-    showError(e.message);
+    if (prediction === state.prediction) showError(e.message);
+  } finally {
+    btn.disabled = false;
   }
 }
 
 // ------------------------------------------------------------------ result
-/** ตัวเลขใหญ่ + ระดับ + กราฟความน่าจะเป็น (ใช้ทั้งผลโมเดลล้วน และผลที่รวมยอดวิวจริงจาก YouTube แล้ว) */
-function renderPrediction(p, probabilities, label, note = "") {
-  $("heroLabel").textContent = label;
-  $("heroViews").textContent = p.views_text;
-  $("heroSub").innerHTML =
-    `≈ ${fmtInt(p.views)} ครั้ง · ระดับ <b>${esc(p.level_name)}</b> (${esc(p.level_range)}) · ความมั่นใจ ${pct(p.confidence)}` +
-    (note ? `<br>${note}` : "");
+function renderPrediction(p, probabilities) {
+  $("heroLabel").textContent = p.level_name;
+  $("heroViews").textContent = `${viewRange(p.level_range)}วิว`;
+  $("heroSub").textContent = `ค่าประมาณ ${p.views_text}วิว · คะแนนโมเดล ${pct(p.confidence)}`;
   $("probs").innerHTML = probabilities.map((c, i) => `
-    <div class="prob-row${i === p.level ? " is-top" : ""}" role="listitem"
-         data-tip="<b>${esc(c.name)}</b> ${esc(c.range)}<br>ความน่าจะเป็น <b>${pct(c.prob)}</b>">
-      <div class="prob-label">${esc(c.name)}${i === p.level ? '<span class="tag">คาดการณ์</span>' : ""}<small>${esc(c.range)}</small></div>
-      <div class="prob-track"><div class="prob-bar" style="width:${(c.prob * 100).toFixed(2)}%"></div></div>
+    <div class="prob-row${i === p.level ? " is-top" : ""}" role="listitem">
+      <div class="prob-label">${esc(c.name)}</div>
+      <div class="prob-track" aria-hidden="true"><div class="prob-bar" style="width:${(c.prob * 100).toFixed(2)}%"></div></div>
       <div class="prob-value">${pct(c.prob)}</div>
     </div>`).join("");
-}
-
-/** ผลที่รวมยอดวิวจริงของเพลงบน YouTube (มาพร้อมผลค้นหา) */
-function renderEstimate(e) {
-  if (!e || e.method === "model") return;
-  const modelNote = `โมเดลจากเนื้อเพลงอย่างเดียว (Naive Bayes) คาด ${esc(e.model_views_text)} วิว`;
-  if (e.method === "exact") {
-    renderPrediction(e, e.probabilities, "ยอดวิวจริงของเพลงนี้บน YouTube",
-      `พบเพลงนี้บน YouTube: <b>${esc(e.exact_title)}</b> (เนื้อเพลงตรงกัน ${pct(e.exact_score)}) · ${modelNote}`);
-  } else {
-    renderPrediction(e, e.probabilities, "ยอดวิวที่คาดว่าจะได้",
-      `ค่าเฉลี่ยยอดวิวจริงของเพลงที่คล้ายกัน ${e.evidence_count} เพลง (ถ่วงตาม % ความคล้าย, น้ำหนัก ${pct(1 - e.model_share)}) ` +
-      `รวมกับ${modelNote} (น้ำหนัก ${pct(e.model_share)})`);
-  }
 }
 
 function renderResult(r) {
   $("resultEmpty").hidden = true;
   $("resultBody").hidden = false;
-  renderPrediction(r.prediction, r.probabilities, "ยอดวิวที่คาดว่าจะได้",
-    ytEnabled() ? "กำลังปรับด้วยยอดวิวจริงของเพลงที่คล้ายกันบน YouTube…" : "");
+  $("similarSection").hidden = false;
+  renderPrediction(r.prediction, r.probabilities);
 
   const t = r.tokens;
   $("coverage").textContent =
-    `โมเดลรู้จัก ${fmtInt(t.known)} จาก ${fmtInt(t.total)} คำ (หลังตัดคำและตัด stopwords)` +
-    (t.known / t.total < 0.5 ? " — คำที่ไม่รู้จักมีมาก ผลอาจคลาดเคลื่อน" : "");
+    `โมเดลรู้จัก ${fmtInt(t.known)} จาก ${fmtInt(t.total)} คำที่ใช้วิเคราะห์`;
 
   $("similar").innerHTML = r.similar.length
     ? r.similar.map((s) => {
         const title = s.url
           ? `<a class="sim-title" href="${esc(s.url)}" target="_blank" rel="noopener noreferrer">${esc(s.title)}</a>`
           : `<span class="sim-title">${esc(s.title)}</span>`;
-        const link = s.url
-          ? `link: <a href="${esc(s.url)}" target="_blank" rel="noopener noreferrer">${esc(s.url)}</a>`
-          : `<span class="none">ไม่มีลิงก์${state.info?.is_demo ? " (ข้อมูลจำลอง)" : ""}</span>`;
         return `<li${s.url ? ` data-url="${esc(s.url)}"` : ""}>
           <div>
             ${title}
             <div class="sim-meta">${esc(s.artist || "ไม่ระบุศิลปิน")} · ระดับ${esc(s.level_name)}</div>
-            <div class="sim-link">${link}</div>
           </div>
           <div class="sim-side">
             <div class="sim-views" title="ยอดวิวตอนเก็บข้อมูล ${fmtInt(s.views)} ครั้ง">${esc(s.views_text)} วิว</div>
@@ -163,8 +162,7 @@ function renderResult(r) {
 const MATCH_REASON = { lyrics: "เนื้อเพลงตรงกัน", title: "ชื่อมีคำในเนื้อเพลง", hook: "YouTube จับคู่ท่อนเพลง", words: "เนื้อหาคล้าย" };
 
 function setSource(src) {
-  state.src = src;
-  document.querySelectorAll("#simTabs button").forEach((b) => b.setAttribute("aria-selected", String(b.dataset.src === src)));
+  document.querySelectorAll("#simTabs button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.src === src)));
   $("simYoutube").hidden = src !== "youtube";
   $("simDataset").hidden = src !== "dataset";
 }
@@ -184,7 +182,10 @@ function renderYoutubeDisabled() {
 }
 
 async function searchYoutube(query = "") {
-  if (!state.lyrics) return;
+  const { result, lyrics } = state;
+  if (!result || !lyrics) return;
+  const search = ++state.search;
+  const isCurrent = () => state.result === result && state.search === search;
   const btn = $("btnYtSearch");
   btn.disabled = true;
   $("ytForm").hidden = false;
@@ -192,19 +193,17 @@ async function searchYoutube(query = "") {
   $("ytResults").innerHTML = "";
   $("ytBench").textContent = "";
   try {
-    const data = await (await api("/api/youtube/search", { lyrics: state.lyrics, query })).json();
+    const data = await (await api("/api/youtube/search", { lyrics, query })).json();
+    if (!isCurrent()) return;
     state.youtube = data;
     renderYoutube(data);
   } catch (e) {
+    if (!isCurrent()) return;
     state.youtube = null;
     ytStatus(e.message, true);
     if (e.code === "no_key") renderYoutubeDisabled();
-    if (state.result) {  // ค้น YouTube ไม่ได้: ใช้ผลจากเนื้อเพลงอย่างเดียว
-      renderPrediction(state.result.prediction, state.result.probabilities, "ยอดวิวที่คาดว่าจะได้",
-        "ใช้ผลจากเนื้อเพลงอย่างเดียว (ยังปรับด้วยยอดวิวจริงบน YouTube ไม่ได้)");
-    }
   } finally {
-    btn.disabled = false;
+    if (isCurrent()) btn.disabled = false;
   }
 }
 
@@ -229,7 +228,6 @@ function renderYoutube(data) {
       <div>
         <a class="sim-title" href="${esc(v.url)}" target="_blank" rel="noopener noreferrer">${esc(v.title)}</a>
         <div class="sim-meta">${esc(v.channel)}${year}${versions}</div>
-        <div class="sim-link">link: <a href="${esc(v.url)}" target="_blank" rel="noopener noreferrer">${esc(v.url)}</a></div>
       </div>
       <div class="sim-side">
         <div class="sim-views" title="${v.views === null ? "" : fmtInt(v.views) + " ครั้ง"}"><span class="live-dot" aria-hidden="true"></span>${views}</div>
@@ -237,20 +235,23 @@ function renderYoutube(data) {
       </div>
     </li>`;
   }).join("");
-  const est = data.estimate && data.estimate.method !== "model" ? data.estimate : state.result.prediction;
-  renderEstimate(data.estimate);
-  $("ytBench").innerHTML = data.median_views_text
-    ? `ค่ากลางยอดวิวของเพลงเหล่านี้บน YouTube ตอนนี้ <b>${esc(data.median_views_text)} วิว</b> · ผลทำนาย <b>${esc(est.views_text)} วิว</b>` +
-      ` <span class="tt-muted">(ดึงเมื่อ ${esc(new Date(data.fetched_at).toLocaleTimeString("th-TH"))}${data.cached ? ", ใช้ผลค้นหาที่เก็บไว้" : ""})</span>`
-    : "";
+  const estimate = data.estimate;
+  const detail = estimate?.method === "exact"
+    ? `ยอดจริงของเพลงที่พบ <b>${esc(estimate.exact_title)} · ${esc(estimate.views_text)} วิว</b>`
+    : estimate?.method === "blend"
+      ? `ค่าประมาณเมื่อรวมเพลงคล้ายจาก YouTube <b>${esc(estimate.views_text)} วิว</b>`
+      : "";
+  $("ytBench").innerHTML = detail;
 }
 
 /** ยอดวิวล่าสุดของเพลงที่คล้ายกันในชุดข้อมูล (เฉพาะเพลงที่มีลิงก์ YouTube) */
 async function refreshLiveViews(similar) {
+  const result = state.result;
   const urls = similar.map((s) => s.url).filter(Boolean);
   if (!urls.length) return;
   try {
     const { stats } = await (await api("/api/youtube/stats", { urls })).json();
+    if (state.result !== result) return;
     document.querySelectorAll("#similar li[data-url]").forEach((li) => {
       const s = stats[li.dataset.url];
       if (!s) return;
@@ -302,7 +303,10 @@ function renderHeatmap() {
     return `<tr${row.scores ? "" : ' class="muted"'}>${lead}${cells}<td class="top-name">${top}</td></tr>`;
   }).join("");
 
-  $("heatmapTable").innerHTML =
+  const table = $("heatmapTable");
+  table.dataset.classes = hm.class_names.length;
+  table.dataset.view = state.view;
+  table.innerHTML =
     `<thead><tr>${head}${classHeads}<th>แนวโน้ม</th></tr></thead><tbody>${body ||
       `<tr><td colspan="${hm.class_names.length + 3}">ไม่มีข้อมูล</td></tr>`}</tbody>`;
 
@@ -317,7 +321,7 @@ function renderHeatmap() {
 
 function setView(view) {
   state.view = view;
-  document.querySelectorAll("#viewTabs button").forEach((b) => b.setAttribute("aria-selected", String(b.dataset.view === view)));
+  document.querySelectorAll("#viewTabs button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.view === view)));
   renderHeatmap();
 }
 
@@ -384,11 +388,11 @@ async function exportPng() {
   const ctx = canvas.getContext("2d");
   ctx.scale(S, S);
   const bg = ctx.createLinearGradient(0, 0, W, H);
-  bg.addColorStop(0, "#22104a");
+  bg.addColorStop(0, THEME.panel);
   bg.addColorStop(1, THEME.bg);
   ctx.fillStyle = bg;
   ctx.fillRect(0, 0, W, H);
-  ctx.strokeStyle = THEME.gold;  // มุมกรอบทองแบบเดียวกับการ์ดบนหน้าเว็บ
+  ctx.strokeStyle = THEME.gold;
   ctx.lineWidth = 2;
   for (const [cx, cy, dx, dy] of [[8, 8, 1, 1], [W - 8, H - 8, -1, -1]]) {
     ctx.beginPath();
@@ -399,8 +403,7 @@ async function exportPng() {
   }
   ctx.textBaseline = "middle";
 
-  const est = state.youtube?.estimate;
-  const p = est && est.method !== "model" ? est : r.prediction;
+  const p = r.prediction;
   const titleGrad = ctx.createLinearGradient(PAD, 0, PAD + 420, 0);
   titleGrad.addColorStop(0, THEME.yellow);
   titleGrad.addColorStop(1, THEME.gold);
@@ -523,21 +526,17 @@ async function loadInfo() {
   try {
     const info = await (await api("/api/info")).json();
     state.info = info;
-    $("demoBadge").hidden = !info.is_demo;
     const r = info.report;
+    $("modelStatus").textContent = info.is_demo ? "ข้อมูลจำลอง" : `เพลงจริง ${fmtInt(r.n_train)} เพลง`;
+    $("modelStatus").hidden = false;
+    $("emptyRanges").innerHTML = info.classes.map((c) =>
+      `<li><b>${esc(c.name)}</b><span>${esc(viewRange(c.range))}วิว</span></li>`).join("");
     $("modelInfo").innerHTML = [
-      `ข้อมูลเทรน <b>${fmtInt(r.n_songs)}</b> เพลง${info.is_demo ? " (จำลอง)" : ""}`,
-      `คลังคำ <b>${fmtInt(r.vocab_size)}</b> คำ`,
-      `Accuracy (test) <b>${pct(r.test_accuracy)}</b> เทียบ baseline ${pct(r.baseline_accuracy)}`,
-      `Macro-F1 <b>${r.test_f1_macro.toFixed(3)}</b>`,
-      `α = <b>${r.best_params.nb__alpha}</b>`,
-      info.youtube.enabled
-        ? `YouTube API <b>เชื่อมต่อแล้ว</b> (ค้นวันนี้ ${info.youtube.searches_today}/${info.youtube.daily_search_limit} ครั้ง)`
-        : "YouTube API <b>ยังไม่ได้ตั้งค่า</b>",
+      `<b>Naive Bayes</b> · ${info.classes.length} ช่วงยอดวิว`,
+      `Accuracy <b>${pct(r.test_accuracy)}</b> · baseline ${pct(r.baseline_accuracy)}`,
+      `ผลทดสอบจาก <b>${fmtInt(r.n_test)}</b> เพลง`,
     ].map((s) => `<span>${s}</span>`).join("");
-    const ytTab = document.querySelector('#simTabs button[data-src="youtube"]');
-    ytTab.classList.toggle("off", !info.youtube.enabled);
-    setSource(info.youtube.enabled ? "youtube" : "dataset");
+    setSource("dataset");
   } catch (e) {
     showError(e.message);
   }
@@ -547,6 +546,13 @@ async function loadInfo() {
 $("btnPredict").addEventListener("click", predict);
 $("btnExample").addEventListener("click", loadExample);
 $("btnClear").addEventListener("click", () => {
+  state.prediction++;
+  state.result = null;
+  state.lyrics = "";
+  state.youtube = null;
+  finishPrediction();
+  $("resultEmpty").hidden = false;
+  for (const id of ["resultBody", "heatmapCard", "similarSection"]) $(id).hidden = true;
   $("lyrics").value = "";
   updateCounter();
   showError("");

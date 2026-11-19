@@ -3,151 +3,129 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>ทำนายยอดวิวจากเนื้อเพลง</title>
+  <meta name="theme-color" content="#171020">
+  <title>Lyrics View Predictor · ทำนายยอดวิวจากเนื้อเพลง</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <meta name="theme-color" content="#140a2e">
-  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;600;700&family=Kanit:ital,wght@0,500;0,600;0,700;1,600;1,700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;600;700&family=Kanit:wght@400;500;600&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
-  <!-- ฉากหลัง: ท้องฟ้ากลางคืน ดาวกระพริบ ประกายลอย (ตกแต่งอย่างเดียว) -->
-  <div class="sky" aria-hidden="true">
-    <span class="stars s1"></span><span class="stars s2"></span><span class="stars s3"></span>
-    <span class="spark" style="--x:8%;--y:22%;--d:0s"></span>
-    <span class="spark" style="--x:92%;--y:12%;--d:1.6s"></span>
-    <span class="spark" style="--x:78%;--y:68%;--d:3.1s"></span>
-    <span class="spark" style="--x:18%;--y:84%;--d:2.2s"></span>
-    <span class="spark" style="--x:50%;--y:40%;--d:4.4s"></span>
-  </div>
-
-  <header class="topbar">
-    <div class="brand">
-      <svg class="logo" viewBox="0 0 64 64" aria-hidden="true">
-        <defs>
-          <linearGradient id="lg-gold" x1="0" y1="0" x2="1" y2="1">
-            <stop offset="0" stop-color="#fff2b3"/><stop offset=".55" stop-color="#f5c542"/><stop offset="1" stop-color="#e0901a"/>
-          </linearGradient>
-          <linearGradient id="lg-violet" x1="0" y1="0" x2="1" y2="1">
-            <stop offset="0" stop-color="#a78bfa"/><stop offset="1" stop-color="#5b21b6"/>
-          </linearGradient>
-        </defs>
-        <circle cx="32" cy="32" r="29" fill="url(#lg-violet)" stroke="url(#lg-gold)" stroke-width="2.5"/>
-        <path d="M27 16v22.5a7 7 0 1 0 4 6.3V26l12-3v12.5a7 7 0 1 0 4 6.3V12z" fill="url(#lg-gold)"/>
-        <path d="M51 7l1.6 4.4L57 13l-4.4 1.6L51 19l-1.6-4.4L45 13l4.4-1.6z" fill="#fff6cc"/>
-      </svg>
-      <div>
-        <p class="kicker">Lyrics × Naive Bayes × YouTube</p>
-        <h1>ทำนายยอดวิว <span class="grad">YouTube</span> จากเนื้อเพลง</h1>
-        <p class="tagline">Multinomial Naive Bayes · TF-IDF · ตัดคำภาษาไทยด้วย PyThaiNLP</p>
-      </div>
+  <header class="site-header">
+    <div class="shell topbar">
+      <a class="brand" href="#" aria-label="Lyrics View Predictor หน้าแรก">
+        <span class="brand-mark" aria-hidden="true">♪</span>
+        <span>Lyrics View <em>Predictor</em></span>
+      </a>
+      <nav aria-label="เมนูหลัก">
+        <a href="#analyzer">วิเคราะห์</a>
+        <a href="#model">ข้อมูลโมเดล</a>
+      </nav>
+      <span class="model-status" id="modelStatus" hidden></span>
     </div>
-    <span class="badge" id="demoBadge" hidden title="ใส่ data/songs.csv จริงแล้วรัน python train.py">ใช้ข้อมูลจำลอง</span>
   </header>
 
-  <main class="flow">
-    <!-- ฝั่งซ้าย: ช่องใส่เนื้อเพลง -->
-    <section class="card input-card" aria-labelledby="lyricsTitle">
-      <div class="card-head">
-        <h2 id="lyricsTitle">เนื้อเพลง</h2>
-        <span class="counter" id="counter">0 บรรทัด · 0 ตัวอักษร</span>
+  <main class="shell">
+    <section class="intro" aria-labelledby="pageTitle">
+      <div class="intro-art" aria-hidden="true"></div>
+      <div class="intro-copy">
+        <h1 id="pageTitle">ทำนายยอดวิว<br><em>จากเนื้อเพลง</em></h1>
+        <p>วิเคราะห์เนื้อร้องเพื่อประมาณช่วงยอดวิวสะสมบน YouTube</p>
       </div>
-      <textarea id="lyrics" spellcheck="false" placeholder="วางเนื้อเพลงที่นี่ (หนึ่งบรรทัดต่อหนึ่งท่อน)"></textarea>
-      <div class="actions">
-        <button class="btn primary" id="btnPredict" type="button">ทำนายยอดวิว</button>
-        <button class="btn" id="btnExample" type="button">สุ่มเนื้อเพลงตัวอย่าง</button>
-        <button class="btn ghost" id="btnClear" type="button">ล้าง</button>
-      </div>
-      <p class="hint">กด <kbd>Ctrl</kbd> + <kbd>Enter</kbd> เพื่อทำนาย</p>
-      <p class="error" id="error" role="alert" hidden></p>
     </section>
 
-    <div class="flow-arrow" aria-hidden="true">
-      <svg viewBox="0 0 48 24" width="48" height="24"><path d="M2 12h40m-9-8 9 8-9 8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-    </div>
-
-    <!-- ฝั่งขวา: ผลทำนาย + เพลงที่เนื้อหาใกล้เคียง -->
-    <section class="card result-card" aria-labelledby="resultTitle" aria-live="polite">
-      <div class="card-head">
-        <h2 id="resultTitle">ผลทำนายยอดวิว</h2>
-      </div>
-
-      <div class="empty" id="resultEmpty">
-        <p>ใส่เนื้อเพลงทางซ้าย แล้วกด <b>ทำนายยอดวิว</b></p>
-      </div>
-
-      <div id="resultBody" hidden>
-        <div class="hero">
-          <div class="hero-label" id="heroLabel">ยอดวิวที่คาดว่าจะได้</div>
-          <div class="hero-value"><span id="heroViews">–</span><span class="hero-unit">วิว</span></div>
-          <div class="hero-sub" id="heroSub"></div>
+    <section class="workspace" id="analyzer" aria-label="วิเคราะห์เนื้อเพลง">
+      <div class="editor">
+        <div class="section-heading">
+          <h2><label for="lyrics">เนื้อเพลง</label></h2>
+          <span class="counter" id="counter">0 บรรทัด · 0 ตัวอักษร</span>
         </div>
+        <textarea id="lyrics" maxlength="20000" spellcheck="false" placeholder="วางหรือพิมพ์เนื้อเพลงที่นี่"></textarea>
+        <div class="actions">
+          <button class="btn primary" id="btnPredict" type="button">ทำนายยอดวิว <span aria-hidden="true">↗</span></button>
+          <button class="btn outline" id="btnExample" type="button">ลองตัวอย่าง</button>
+          <button class="btn ghost" id="btnClear" type="button">ล้าง</button>
+        </div>
+        <p class="error" id="error" role="alert" hidden></p>
+      </div>
 
-        <div class="probs" id="probs" role="list" aria-label="ความน่าจะเป็นของแต่ละระดับยอดวิว"></div>
-        <p class="coverage" id="coverage"></p>
-
-        <div class="divider"></div>
-
-        <div class="similar-head">
-          <h3 class="section-title">เพลงที่เนื้อหาใกล้เคียง</h3>
-          <div class="tabs small" role="tablist" id="simTabs" aria-label="แหล่งข้อมูลเพลงที่ใกล้เคียง">
-            <button role="tab" aria-selected="true" data-src="youtube" type="button">YouTube <span class="live">สด</span></button>
-            <button role="tab" aria-selected="false" data-src="dataset" type="button">ชุดข้อมูลเทรน</button>
+      <section class="prediction" aria-labelledby="resultTitle">
+        <div class="section-heading">
+          <h2 id="resultTitle">ผลทำนาย</h2>
+          <span class="result-source">จากเนื้อร้อง</span>
+        </div>
+        <div id="predictionStatus" aria-live="polite">
+          <div class="empty" id="resultEmpty">
+            <p>ผลจะปรากฏเมื่อกดทำนายยอดวิว</p>
+            <ul class="empty-ranges" id="emptyRanges" aria-label="ช่วงยอดวิวของโมเดล"></ul>
+          </div>
+          <div id="resultBody" hidden>
+            <p class="hero-label" id="heroLabel"></p>
+            <p class="hero-value" id="heroViews"></p>
+            <p class="hero-sub" id="heroSub"></p>
+            <div class="probs" id="probs" role="list" aria-label="คะแนนของแต่ละช่วงยอดวิว"></div>
+            <p class="coverage" id="coverage"></p>
           </div>
         </div>
+      </section>
+    </section>
 
-        <div id="simYoutube" role="tabpanel">
-          <form class="yt-query" id="ytForm">
-            <label for="ytQuery">คำค้น</label>
-            <input id="ytQuery" type="search" maxlength="100" autocomplete="off" placeholder="คำเด่นจากเนื้อเพลง">
-            <button class="btn" type="submit" id="btnYtSearch">ค้นใหม่</button>
-          </form>
-          <p class="yt-status" id="ytStatus" role="status"></p>
-          <ol class="similar yt" id="ytResults"></ol>
-          <p class="yt-bench" id="ytBench"></p>
+    <section class="detail-section" id="heatmapCard" hidden aria-labelledby="heatmapTitle">
+      <div class="section-heading detail-heading">
+        <div>
+          <h2 id="heatmapTitle">วิเคราะห์คำและท่อนเพลง</h2>
+          <p class="sub" id="heatmapSub"></p>
         </div>
+        <div class="heatmap-tools">
+          <div class="tabs" role="group" id="viewTabs" aria-label="มุมมองการวิเคราะห์">
+            <button aria-pressed="true" data-view="words" type="button">รายคำ</button>
+            <button aria-pressed="false" data-view="lines" type="button">รายบรรทัด</button>
+          </div>
+          <div class="export">
+            <button class="btn outline" id="btnXlsx" type="button">Excel <span aria-hidden="true">↓</span></button>
+            <button class="btn outline" id="btnPng" type="button">PNG <span aria-hidden="true">↓</span></button>
+          </div>
+        </div>
+      </div>
+      <div class="legend">
+        <span>0%</span><span class="legend-ramp" id="legendRamp"></span><span>100%</span>
+        <span class="legend-note">ยิ่งสว่าง คะแนนยิ่งสูง</span>
+      </div>
+      <div class="table-wrap" tabindex="0" role="region" aria-label="ตารางคะแนนคำและท่อนเพลง">
+        <table class="heatmap" id="heatmapTable"></table>
+      </div>
+      <p class="unknown" id="unknownWords"></p>
+    </section>
 
-        <div id="simDataset" role="tabpanel" hidden>
-          <ol class="similar" id="similar"></ol>
+    <section class="detail-section" id="similarSection" hidden aria-labelledby="similarTitle">
+      <div class="section-heading detail-heading">
+        <h2 id="similarTitle">เพลงที่เนื้อหาใกล้เคียง</h2>
+        <div class="tabs" role="group" id="simTabs" aria-label="แหล่งข้อมูลเพลงที่ใกล้เคียง">
+          <button aria-pressed="true" data-src="dataset" type="button">ชุดฝึก</button>
+          <button aria-pressed="false" data-src="youtube" type="button">YouTube</button>
         </div>
+      </div>
+      <div id="simDataset">
+        <ol class="similar" id="similar"></ol>
+      </div>
+      <div id="simYoutube" hidden>
+        <form class="yt-query" id="ytForm">
+          <label for="ytQuery">คำค้น</label>
+          <input id="ytQuery" type="search" maxlength="100" autocomplete="off" placeholder="คำเด่นจากเนื้อเพลง">
+          <button class="btn outline" type="submit" id="btnYtSearch">ค้นใหม่</button>
+        </form>
+        <p class="yt-status" id="ytStatus" role="status"></p>
+        <p class="yt-bench" id="ytBench"></p>
+        <ol class="similar yt" id="ytResults"></ol>
       </div>
     </section>
   </main>
 
-  <!-- Heatmap ของเนื้อเพลง + ปุ่ม export -->
-  <section class="card heatmap-card" id="heatmapCard" hidden aria-labelledby="heatmapTitle">
-    <div class="heatmap-head">
-      <div>
-        <h2 id="heatmapTitle">ตาราง Heatmap ของเนื้อเพลง</h2>
-        <p class="sub" id="heatmapSub"></p>
-      </div>
-      <div class="heatmap-tools">
-        <div class="tabs" role="tablist" id="viewTabs" aria-label="มุมมอง heatmap">
-          <button role="tab" aria-selected="true" data-view="words" type="button">รายคำ</button>
-          <button role="tab" aria-selected="false" data-view="lines" type="button">รายบรรทัด</button>
-        </div>
-        <div class="export">
-          <button class="btn primary" id="btnXlsx" type="button">Export Excel</button>
-          <button class="btn" id="btnPng" type="button">Export PNG</button>
-        </div>
-      </div>
-    </div>
-
-    <div class="legend">
-      <span>0%</span><span class="legend-ramp" id="legendRamp"></span><span>100%</span>
-      <span class="legend-note">สว่างขึ้น (ทอง) = สัมพันธ์กับระดับยอดวิวนั้นมากขึ้น</span>
-    </div>
-
-    <div class="table-wrap">
-      <table class="heatmap" id="heatmapTable"></table>
-    </div>
-    <p class="unknown" id="unknownWords"></p>
-  </section>
-
-  <footer class="footer" id="modelInfo"></footer>
-
+  <footer class="shell footer" id="model">
+    <h2>ข้อมูลโมเดล</h2>
+    <div id="modelInfo"></div>
+  </footer>
   <div class="tooltip" id="tooltip" role="tooltip" hidden></div>
-
-  <script src="{{ url_for('static', filename='app.js') }}"></script>
+  <script src="{{ url_for('static', filename='app.js') }}" defer></script>
 </body>
 </html>
