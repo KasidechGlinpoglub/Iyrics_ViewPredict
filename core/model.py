@@ -68,7 +68,7 @@ def load_dataset(path: str | Path, *, split_path: Path | None = None) -> pd.Data
             df[col] = ""
     df["views"] = pd.to_numeric(df["views"], errors="coerce")
     df = df.dropna(subset=["lyrics", "views"])
-    df = df[(df["views"] > 0) & (df["lyrics"].astype(str).str.strip() != "")]
+    df = df[np.isfinite(df["views"]) & (df["views"] > 0) & (df["lyrics"].astype(str).str.strip() != "")]
     for col in ("title", "artist", "url"):
         df[col] = df[col].fillna("").astype(str).str.strip()
     df["lyrics"] = df["lyrics"].astype(str)
@@ -126,6 +126,7 @@ def train(df: pd.DataFrame, levels: str = "fixed", n_classes: int = 4, seed: int
     """levels="fixed": ระดับคงที่ หลักหมื่น / หลักแสน / หลักล้าน (เข้าใจง่าย เทียบกับยอดวิวจริงได้ตรง ๆ)
     levels="quantile": แบ่งตาม quantile ของข้อมูล ให้แต่ละระดับมีจำนวนเพลงเท่ากัน (n_classes ระดับ)"""
     log_views = np.log10(df["views"].to_numpy(dtype=float))
+    idx = np.arange(len(df))
     if locked and levels != "fixed":
         raise ValueError("โหมดแบ่งชุดที่ล็อกไว้ใช้สามคลาสแบบ fixed")
     if levels == "fixed":
@@ -134,7 +135,11 @@ def train(df: pd.DataFrame, levels: str = "fixed", n_classes: int = 4, seed: int
     else:
         if n_classes not in CLASS_NAMES:
             raise ValueError(f"รองรับจำนวนระดับ {sorted(CLASS_NAMES)} เท่านั้น")
-        edges = np.quantile(log_views, [i / n_classes for i in range(1, n_classes)])
+        # Define quantile labels from training views only. The holdout cannot set its own cutoffs.
+        tr, te = train_test_split(idx, test_size=0.2, random_state=seed)
+        edges = np.quantile(log_views[tr], [i / n_classes for i in range(1, n_classes)])
+        if np.any(np.diff(edges) <= 0):
+            raise ValueError("ยอดวิวซ้ำกันมากจนแบ่ง quantile ตามจำนวนคลาสที่ขอไม่ได้")
         names = CLASS_NAMES[n_classes]
     n_classes = len(names)
     y = np.digitize(log_views, edges)
@@ -147,7 +152,6 @@ def train(df: pd.DataFrame, levels: str = "fixed", n_classes: int = 4, seed: int
 
     tokens = [tokenize(t) for t in df["lyrics"]]
 
-    idx = np.arange(len(df))
     if locked:
         tr = idx[df["split"].eq("train")]
         te = idx[df["split"].eq("test")]
@@ -160,7 +164,10 @@ def train(df: pd.DataFrame, levels: str = "fixed", n_classes: int = 4, seed: int
         if any(set(y[tr][fit]) != expected for fit, _ in cv):
             raise ValueError("บาง fold ฝึกมีไม่ครบสามคลาส โปรดตรวจจำนวนกลุ่มต่อคลาส")
     else:
-        tr, te = train_test_split(idx, test_size=0.2, stratify=y, random_state=seed)
+        if levels == "fixed":
+            tr, te = train_test_split(idx, test_size=0.2, stratify=y, random_state=seed)
+        elif np.bincount(y[tr], minlength=n_classes).min() < 5:
+            raise ValueError("บางคลาสมีเพลงฝึกน้อยเกินไปสำหรับ CV 5 รอบ")
         cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=seed)
     docs_tr = [tokens[i] for i in tr]
     docs_te = [tokens[i] for i in te]
@@ -191,7 +198,8 @@ def train(df: pd.DataFrame, levels: str = "fixed", n_classes: int = 4, seed: int
         "best_params": {k: (v if not isinstance(v, np.generic) else v.item()) for k, v in grid.best_params_.items()},
         "cv_f1_macro": round(float(grid.best_score_), 4),
         "test_accuracy": round(float(accuracy_score(y[te], pred_te)), 4),
-        "test_f1_macro": round(float(f1_score(y[te], pred_te, average="macro")), 4),
+        "test_f1_macro": round(float(f1_score(y[te], pred_te, labels=range(n_classes),
+                                              average="macro", zero_division=0)), 4),
         "baseline_accuracy": round(float(np.mean(y[te] == majority)), 4),
         "test_mae_log10": round(float(np.mean(np.abs(est_log_te - log_views[te]))), 4),
         "confusion_matrix": confusion_matrix(y[te], pred_te, labels=list(range(n_classes))).tolist(),
@@ -264,6 +272,8 @@ class LyricsModel:
         return {"classes": self.classes, "report": self.b["report"], "is_demo": self.b["is_demo"]}
 
     def random_example(self, rng: np.random.Generator | None = None) -> dict:
+        if "example" in self.b:
+            return self.b["example"].copy()
         rng = rng or np.random.default_rng()
         song = self.b["songs"][int(rng.integers(len(self.b["songs"])))]
         return {"title": song["title"], "artist": song["artist"], "lyrics": song["lyrics"]}

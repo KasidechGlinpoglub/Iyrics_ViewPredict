@@ -22,7 +22,9 @@ from core.model import LyricsModel, format_views
 from core.text import clean_lyrics, tokenize
 from core.youtube import YouTubeClient, YouTubeError, extract_video_id
 
-MODEL_PATH = BASE_DIR / "models" / "lyrics_nb.joblib"
+LOCAL_MODEL_PATH = BASE_DIR / "models" / "lyrics_nb.joblib"
+PUBLIC_MODEL_PATH = BASE_DIR / "deploy" / "lyrics_nb.joblib"
+MODEL_PATH = LOCAL_MODEL_PATH if LOCAL_MODEL_PATH.is_file() and not os.environ.get("VERCEL") else PUBLIC_MODEL_PATH
 MAX_CHARS = 20_000
 YT_RESULTS_SHOWN = 6
 YT_CANDIDATES = 25  # ดึงผลค้นหามาเยอะ (ราคาโควตาเท่าเดิม) แล้วค่อยคัดด้วยความตรงกับเนื้อเพลง
@@ -157,7 +159,13 @@ def export_xlsx():
     lyrics = _lyrics_from(data)
     result = get_model().predict(lyrics)
     yt = data.get("youtube") if isinstance(data.get("youtube"), list) else []
-    yt = yt[:YT_RESULTS_SHOWN]
+    yt = [row for row in yt[:YT_RESULTS_SHOWN] if isinstance(row, dict)]
+    for row in yt:
+        # Export accepts results posted back by the browser, so their numeric fields are untrusted.
+        views, similarity = row.get("views"), row.get("lyric_similarity")
+        if (views is not None and (type(views) is not int or not 0 <= views < 2**63)
+                or similarity is not None and (type(similarity) not in (float, int) or not 0 <= similarity <= 1)):
+            raise ValueError("ยอดวิวหรือคะแนนความคล้ายที่ส่งมาสำหรับ Excel ไม่ถูกต้อง")
     estimate = get_model().combine(result, _evidence(yt)) if yt else None
     return send_file(
         build_workbook(result, lyrics, youtube_results=yt, estimate=estimate),
@@ -253,16 +261,6 @@ def youtube_stats():
             stats[url] = {"views": v["views"], "views_text": format_views(v["views"]), "title": v["title"]}
     return jsonify(stats=stats, fetched_at=_now_iso())
 
-
-# ------------------------------------------------------------------ warm-up
-def _warm_up() -> None:
-    """โหลดโมเดลและพจนานุกรมตัดคำไว้ก่อน ให้คำขอแรกไม่ช้า (ทำงานทั้งตอนรัน python app.py และ gunicorn)"""
-    if MODEL_PATH.exists():
-        get_model().predict("ทดสอบระบบ รัก")
-    search_keywords(tokenize("ทดสอบระบบ คนเดียว"))  # โหลดคลังความถี่คำ TNC
-
-
-_warm_up()
 
 if __name__ == "__main__":
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")  # console Windows บางเครื่องพิมพ์ภาษาไทยไม่ได้

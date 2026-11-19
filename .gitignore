@@ -1,5 +1,8 @@
 # ความลับ: ห้ามอัปโหลด
 .env
+.env.*
+!.env.example
+.vercel/
 
 # สร้างใหม่ได้ด้วย python train.py
 models/

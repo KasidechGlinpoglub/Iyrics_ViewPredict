@@ -1,4 +1,6 @@
 .env
+.env.*
+.vercel
 .git
 .claude
 models/

@@ -5,6 +5,7 @@ from datetime import datetime
 from io import BytesIO
 
 from openpyxl import Workbook
+from openpyxl.cell.cell import ILLEGAL_CHARACTERS_RE
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
 
@@ -25,8 +26,10 @@ THIN = Side(style="thin", color="FFFFFF")
 
 
 def _put(ws, row: int, col: int, value=None, **font):
-    """เขียนค่าลงเซลล์ ข้อความที่ขึ้นต้นด้วย '=' ต้องเป็นข้อความ ไม่ใช่สูตร (กัน formula injection)"""
+    """เก็บข้อความที่ผู้ใช้ส่งมาเป็นข้อความในเซลล์ และกรองอักขระที่ XML ไม่รองรับ"""
     cell = ws.cell(row=row, column=col)
+    if isinstance(value, str):
+        value = ILLEGAL_CHARACTERS_RE.sub("", value)
     cell.value = value
     if isinstance(value, str) and value.startswith("="):
         cell.data_type = "s"

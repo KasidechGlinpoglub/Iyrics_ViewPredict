@@ -1,0 +1,10 @@
+/.env*
+/models/
+/data/
+/docs/
+/scripts/
+/tests/
+/__pycache__/
+/Dockerfile
+/render.yaml
+/train.py

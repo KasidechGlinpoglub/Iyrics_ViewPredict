@@ -361,14 +361,14 @@ function fitText(ctx, text, maxWidth) {
 async function exportPng() {
   const r = state.result;
   if (!r) return;
+  const words = state.view === "words";
   await document.fonts.ready;
   const hm = r.heatmap;
-  const words = state.view === "words";
   const rows = heatmapRows(hm, state.view);
   const ranges = r.probabilities.map((p) => p.range);
   const n = hm.class_names.length;
 
-  const S = 2, PAD = 28, ROW = 32, HEAD = 52, GAP = 2;
+  const PAD = 28, ROW = 32, HEAD = 52, GAP = 2;
   const probe = document.createElement("canvas").getContext("2d");
   probe.font = `500 14px ${FONT}`;
   const labelW = Math.min(words ? 260 : 460,
@@ -382,11 +382,21 @@ async function exportPng() {
   const titleH = 78, legendH = 56;
   const H = PAD + titleH + HEAD + rows.length * (ROW + GAP) + legendH + PAD;
 
+  // Bound both canvas height and memory while preserving all rows.
+  const scale = Math.min(2, 16_000 / Math.max(W, H), Math.sqrt(22_000_000 / (W * H)));
+  if (scale < 0.8) {
+    showError("ตารางยาวเกินไปสำหรับ PNG ที่อ่านได้ โปรดส่งออก Excel หรือแบ่งเนื้อร้องเป็นช่วง");
+    return;
+  }
   const canvas = document.createElement("canvas");
-  canvas.width = W * S;
-  canvas.height = H * S;
+  canvas.width = Math.ceil(W * scale);
+  canvas.height = Math.ceil(H * scale);
   const ctx = canvas.getContext("2d");
-  ctx.scale(S, S);
+  if (!ctx) {
+    showError("เบราว์เซอร์สร้างภาพ PNG ไม่สำเร็จ ลองส่งออก Excel");
+    return;
+  }
+  ctx.scale(scale, scale);
   const bg = ctx.createLinearGradient(0, 0, W, H);
   bg.addColorStop(0, THEME.panel);
   bg.addColorStop(1, THEME.bg);
@@ -496,7 +506,10 @@ async function exportPng() {
   ctx.fillStyle = THEME.muted;
   ctx.fillText("100%   สว่างขึ้น (ทอง) = สัมพันธ์กับระดับยอดวิวนั้นมากขึ้น", gx + gw + 8, y + 7);
 
-  canvas.toBlob((blob) => download(blob, `lyrics_heatmap_${words ? "words" : "lines"}.png`), "image/png");
+  canvas.toBlob((blob) => {
+    if (blob) download(blob, `lyrics_heatmap_${words ? "words" : "lines"}.png`);
+    else showError("เบราว์เซอร์สร้างภาพ PNG ไม่สำเร็จ ลองส่งออก Excel");
+  }, "image/png");
 }
 
 // ------------------------------------------------------------------ tooltip
